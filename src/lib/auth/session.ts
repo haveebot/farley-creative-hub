@@ -22,7 +22,7 @@ export async function setSessionCookie(email: string): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set({
     name: SESSION_COOKIE,
-    value: generateSessionValue(email),
+    value: await generateSessionValue(email),
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -47,5 +47,5 @@ export async function getCurrentOperatorEmail(): Promise<string | null> {
   const cookieStore = await cookies();
   const value = cookieStore.get(SESSION_COOKIE)?.value;
   if (!value) return null;
-  return verifySessionValue(value);
+  return await verifySessionValue(value);
 }

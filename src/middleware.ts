@@ -15,7 +15,7 @@ import { SESSION_COOKIE, verifySessionValue } from "@/lib/auth/session-tokens";
 
 const PUBLIC_PATHS = ["/login", "/setup", "/api/auth"];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
@@ -23,7 +23,7 @@ export function middleware(request: NextRequest) {
   }
 
   const cookie = request.cookies.get(SESSION_COOKIE)?.value;
-  const email = cookie ? verifySessionValue(cookie) : null;
+  const email = cookie ? await verifySessionValue(cookie) : null;
 
   if (!email) {
     const loginUrl = new URL("/login", request.url);
