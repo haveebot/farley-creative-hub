@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { BrandIdentity } from "@/lib/db/brand";
 
@@ -8,6 +9,7 @@ type Status = "idle" | "saving" | "saved" | "error";
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export default function BrandForm({ initial }: { initial: BrandIdentity }) {
+  const router = useRouter();
   const [studioName, setStudioName] = useState(initial.studio_name);
   const [hubLabel, setHubLabel] = useState(initial.hub_label);
   const [bio, setBio] = useState(initial.bio);
@@ -51,7 +53,9 @@ export default function BrandForm({ initial }: { initial: BrandIdentity }) {
 
       if (res.ok) {
         setStatus("saved");
-        // Reset to idle after a moment.
+        // Re-render server components so layout picks up new brand values
+        // (CSS accent color, hub_label in header, etc.) without a hard reload.
+        router.refresh();
         setTimeout(() => setStatus("idle"), 2000);
         return;
       }
