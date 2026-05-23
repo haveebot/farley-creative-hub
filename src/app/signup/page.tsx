@@ -1,11 +1,11 @@
-import { getBrand } from "@/lib/db/brand";
+import { getHubPreferences } from "@/lib/db/hub-preferences";
 import SignupForm from "./SignupForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignupPage() {
-  const brand = await getBrand().catch(() => null);
-  const label = brand?.hub_label ?? "Farley Creative Hub";
+  const prefs = await getHubPreferences().catch(() => null);
+  const label = prefs?.hub_label ?? "Farley Creative Hub";
 
   return (
     <main className="min-h-screen flex items-center justify-center p-8">

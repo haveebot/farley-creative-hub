@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
-import { getBrand } from "@/lib/db/brand";
+import { getHubPreferences } from "@/lib/db/hub-preferences";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const brand = await getBrand();
+    const prefs = await getHubPreferences();
     return {
-      title: brand.hub_label,
-      description: `Operator dashboard for ${brand.studio_name}.`,
+      title: prefs.hub_label,
+      description: `Operator dashboard.`,
     };
   } catch {
-    // Brand not available (e.g. DB unreachable during build) — fall back.
     return {
       title: "Farley Creative Hub",
-      description: "Operator-tier dashboard for Farley Girls Creative.",
+      description: "Operator-tier dashboard.",
     };
   }
 }
@@ -21,14 +20,14 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Load brand for CSS variable injection. Any failure (DB unavailable
-  // during build) falls back to the default token already set in globals.css.
+  // Inject Hub accent color as a CSS variable. Falls back to globals.css
+  // default if DB is unavailable (e.g. during build).
   let accent: string | null = null;
   try {
-    const brand = await getBrand();
-    accent = brand.primary_color;
+    const prefs = await getHubPreferences();
+    accent = prefs.accent_color;
   } catch {
-    // ignore; CSS default applies
+    // ignore
   }
 
   return (

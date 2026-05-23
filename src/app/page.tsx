@@ -1,67 +1,57 @@
 import { getCurrentOperatorEmail } from "@/lib/auth/session";
-import { getBrand } from "@/lib/db/brand";
+import { getStudioKit } from "@/lib/db/brand-kits";
 import Greeting from "./Greeting";
+import TopNav from "./TopNav";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  // Middleware guarantees a valid session, but read it here for display.
-  const [email, brand] = await Promise.all([
+  const [email, studio] = await Promise.all([
     getCurrentOperatorEmail(),
-    getBrand(),
+    getStudioKit(),
   ]);
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
-      <header className="max-w-5xl mx-auto flex items-center justify-between mb-12">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-muted mb-1">
-            {brand.hub_label}
-          </p>
-          <h1 className="text-2xl font-serif">
+    <>
+      <TopNav />
+      <main className="min-h-screen p-8 md:p-12">
+        <header className="max-w-5xl mx-auto mb-12">
+          <h1 className="text-3xl font-serif">
             <Greeting />.
           </h1>
-        </div>
-        <div className="flex items-center gap-6">
-          <a href="/settings/brand" className="text-sm text-muted hover:text-foreground transition">
-            Settings
-          </a>
-          <form action="/api/auth/logout" method="post">
-            <button
-              type="submit"
-              className="text-sm text-muted hover:text-foreground transition"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+        </header>
 
-      <section className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card title="Awaiting you" subtitle="0 items">
-          Nothing waiting. Listing drafts and customer messages will land here.
-        </Card>
-        <Card title="Today" subtitle="—">
-          Sales, new orders, and reviews show up here once Etsy is connected.
-        </Card>
-        <Card title="Quick actions" subtitle="">
-          <ul className="text-sm space-y-2 text-muted">
-            <li>
-              <a href="/settings/brand" className="hover:text-foreground transition">
-                → Configure brand identity
-              </a>
-            </li>
-            <li>Connect Etsy shop (pending app approval)</li>
-            <li>Drop a design to draft a listing (coming soon)</li>
-          </ul>
-        </Card>
-      </section>
+        <section className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card title="Awaiting you" subtitle="0 items">
+            Nothing waiting. Listing drafts and customer messages will land here.
+          </Card>
+          <Card title="Today" subtitle="—">
+            Sales, new orders, and reviews show up here once Etsy is connected.
+          </Card>
+          <Card title="Quick actions" subtitle="">
+            <ul className="text-sm space-y-2 text-muted">
+              <li>
+                <a href="/brand" className="hover:text-foreground transition">
+                  → Edit studio brand kit
+                </a>
+              </li>
+              <li>
+                <a href="/settings" className="hover:text-foreground transition">
+                  → Hub settings
+                </a>
+              </li>
+              <li>Connect Etsy shop (pending app approval)</li>
+              <li>Drop a design to draft a listing (coming soon)</li>
+            </ul>
+          </Card>
+        </section>
 
-      <footer className="max-w-5xl mx-auto mt-16 text-xs text-muted flex items-center justify-between">
-        <span>{brand.studio_name}</span>
-        <span>Signed in as {email}</span>
-      </footer>
-    </main>
+        <footer className="max-w-5xl mx-auto mt-16 text-xs text-muted flex items-center justify-between">
+          <span>{studio.name}</span>
+          <span>Signed in as {email}</span>
+        </footer>
+      </main>
+    </>
   );
 }
 
