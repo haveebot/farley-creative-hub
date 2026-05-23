@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "migrate": "node --import tsx scripts/migrate.ts"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "next": "^16.2.1",
+    "pg": "^8.13.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "resend": "^6.12.3",
@@ -16,10 +19,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^25.5.0",
+    "@types/pg": "^8.11.10",
     "@types/react": "^19.2.14",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.19.2",
     "typescript": "^6.0.2"
   }
 }

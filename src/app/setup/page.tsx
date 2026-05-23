@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import { countUsers } from "@/lib/db/users";
-import LoginForm from "./LoginForm";
+import SetupForm from "./SetupForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
-  // If no users exist yet, redirect to /setup (first-user-becomes-owner).
+export default async function SetupPage() {
+  // If a user already exists, setup is locked. Redirect to /login.
   const userCount = await countUsers();
-  if (userCount === 0) {
-    redirect("/setup");
+  if (userCount > 0) {
+    redirect("/login");
   }
 
   return (
@@ -18,9 +18,12 @@ export default async function LoginPage() {
           <p className="text-sm uppercase tracking-widest text-muted mb-3">
             Farley Creative Hub
           </p>
-          <h1 className="text-3xl font-serif">Sign in</h1>
+          <h1 className="text-3xl font-serif mb-3">Create your account</h1>
+          <p className="text-sm text-muted">
+            One-time setup. Your email and password will sign you into the Hub from here on.
+          </p>
         </div>
-        <LoginForm />
+        <SetupForm />
       </div>
     </main>
   );
