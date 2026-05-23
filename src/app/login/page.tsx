@@ -1,16 +1,8 @@
-import { redirect } from "next/navigation";
-import { countUsers } from "@/lib/db/users";
 import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
-  // If no users exist yet, redirect to /setup (first-user-becomes-owner).
-  const userCount = await countUsers();
-  if (userCount === 0) {
-    redirect("/setup");
-  }
-
+export default function LoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-8">
       <div className="max-w-sm w-full">
@@ -21,6 +13,9 @@ export default async function LoginPage() {
           <h1 className="text-3xl font-serif">Sign in</h1>
         </div>
         <LoginForm />
+        <p className="text-center text-sm text-muted pt-4 mt-4">
+          New here? <a href="/signup" className="underline">Create account</a>
+        </p>
       </div>
     </main>
   );

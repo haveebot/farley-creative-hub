@@ -1,6 +1,6 @@
 /**
  * Middleware — gate every route behind a valid session cookie except:
- *   - /login + /setup (the auth surfaces themselves)
+ *   - /login + /signup (the auth surfaces themselves)
  *   - /api/auth/* (login, signup, logout)
  *   - Next.js internals (/_next, /favicon.ico, etc.)
  *
@@ -13,7 +13,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionValue } from "@/lib/auth/session-tokens";
 
-const PUBLIC_PATHS = ["/login", "/setup", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/signup", "/api/auth"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
