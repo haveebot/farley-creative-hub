@@ -4,10 +4,11 @@ import { useState } from "react";
 
 type Status = "idle" | "submitting" | "error";
 
-export default function SetupForm() {
+export default function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [key, setKey] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -31,7 +32,7 @@ export default function SetupForm() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, key }),
       });
 
       if (res.ok) {
@@ -88,6 +89,17 @@ export default function SetupForm() {
           className="w-full px-4 py-3 bg-transparent border border-border rounded-md focus:outline-none focus:border-accent transition"
         />
       </label>
+      <label className="block">
+        <span className="block text-sm text-muted mb-2">Signup key</span>
+        <input
+          type="text"
+          required
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          autoComplete="off"
+          className="w-full px-4 py-3 bg-transparent border border-border rounded-md focus:outline-none focus:border-accent transition font-mono text-sm"
+        />
+      </label>
       <button
         type="submit"
         disabled={status === "submitting"}
@@ -98,6 +110,9 @@ export default function SetupForm() {
       {errorMessage && (
         <p className="text-sm text-red-600 text-center">{errorMessage}</p>
       )}
+      <p className="text-center text-sm text-muted pt-2">
+        Already have an account? <a href="/login" className="underline">Sign in</a>
+      </p>
     </form>
   );
 }
