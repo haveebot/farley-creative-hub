@@ -1,10 +1,9 @@
 import { getCurrentOperatorEmail } from "@/lib/auth/session";
+import Greeting from "./Greeting";
 
 export default async function Home() {
   // Middleware guarantees a valid session, but read it here for display.
   const email = await getCurrentOperatorEmail();
-
-  const greeting = getGreeting();
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -13,7 +12,9 @@ export default async function Home() {
           <p className="text-xs uppercase tracking-widest text-muted mb-1">
             Farley Creative Hub
           </p>
-          <h1 className="text-2xl font-serif">{greeting}.</h1>
+          <h1 className="text-2xl font-serif">
+            <Greeting />.
+          </h1>
         </div>
         <form action="/api/auth/logout" method="post">
           <button
@@ -66,13 +67,4 @@ function Card({
       <div className="text-sm leading-relaxed">{children}</div>
     </div>
   );
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 5) return "Up late";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Up late";
 }
