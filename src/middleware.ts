@@ -15,7 +15,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionValue } from "@/lib/auth/session-tokens";
 
-const PUBLIC_PAGE_PATHS = ["/login", "/signup"];
+const PUBLIC_PAGE_PATHS = ["/login", "/signup", "/privacy"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
