@@ -80,7 +80,7 @@ export async function createLead(input: LeadCreate): Promise<Lead> {
     `INSERT INTO leads
        (source_type, source_url, source_title, business_name, city, state,
         industry, size, service_signal, raw_content, notes, status, found_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, '{}'),
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, '{}'::text[]),
              COALESCE($10, ''), COALESCE($11, ''), COALESCE($12, 'new'), $13)
      RETURNING *`,
     [

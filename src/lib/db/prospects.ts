@@ -109,7 +109,7 @@ export async function createProspect(input: ProspectCreate): Promise<Prospect> {
        (business_name, industry, size, city, state, website_url, status,
         service_interest, notes, next_action, next_action_date, source)
      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'lead'),
-             COALESCE($8, '{}'), COALESCE($9, ''), $10, $11, $12)
+             COALESCE($8, '{}'::text[]), COALESCE($9, ''), $10, $11, $12)
      RETURNING *`,
     [
       input.business_name,
