@@ -6,10 +6,13 @@ import {
   listEnrollmentsForProspect,
   listSendsForEnrollment,
 } from "@/lib/db/enrollments";
+import { getActiveConnection as getWorkspaceConnection } from "@/lib/db/workspace-connections";
+import { listRecentExchange, type GmailExchangeMessage } from "@/lib/gmail/read";
 import { getProspect, listActivity, listContacts } from "@/lib/db/prospects";
 import { query } from "@/lib/db/client";
 import TopNav from "../../TopNav";
 import CadenceEnrollment from "./CadenceEnrollment";
+import GmailExchange from "./GmailExchange";
 import ProspectDetail from "./ProspectDetail";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +49,24 @@ export default async function ProspectPage({
     ? await listSendsForEnrollment(activeEnrollment.id)
     : [];
 
+  // Recent Gmail exchange with the primary contact — context for any
+  // cadence draft about to be reviewed. Only fetched if Workspace is
+  // connected AND the primary contact has an email. Silently empty
+  // on Gmail API errors so the rest of the page still renders.
+  const primaryContact =
+    contacts.find((c) => c.is_primary && c.email) ?? contacts.find((c) => c.email);
+  const workspaceConnection = await getWorkspaceConnection();
+  let recentExchange: GmailExchangeMessage[] = [];
+  let exchangeError: string | null = null;
+  if (workspaceConnection && primaryContact?.email) {
+    try {
+      recentExchange = await listRecentExchange(primaryContact.email, 10);
+    } catch (err) {
+      console.warn(`[pipeline/${numId}] Gmail exchange fetch failed`, err);
+      exchangeError = (err as Error).message;
+    }
+  }
+
   return (
     <>
       <TopNav />
@@ -77,6 +98,16 @@ export default async function ProspectPage({
               cadences={cadences}
             />
           </div>
+          {workspaceConnection && primaryContact?.email && (
+            <div className="mt-8">
+              <GmailExchange
+                contactEmail={primaryContact.email}
+                contactName={primaryContact.name}
+                messages={recentExchange}
+                error={exchangeError}
+              />
+            </div>
+          )}
         </div>
       </main>
     </>
