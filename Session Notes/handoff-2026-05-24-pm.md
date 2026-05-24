@@ -26,6 +26,8 @@
 | `01405de` | fix: cast `'{}'` literal to `text[]` in array-column inserts (lead capture bug) |
 | `4fd78b2` | docs: split MCP setup instructions for Claude Code vs Claude desktop |
 | `3f58b61` | **feat: pivot cadence sends to Gmail API (Workspace) — Resend becomes fallback** |
+| `ac16dd9` | docs: update truck — Gmail API pivot operational |
+| `a0c119d` | **feat: draft-only cadence mode — Hub never auto-sends client emails** |
 
 ## Where things stand
 
@@ -51,11 +53,13 @@
 | `RESEND_API_KEY` + `_FROM_EMAIL` in Vercel | ✓ Loaded (fallback only) |
 | `CRON_SECRET` in Vercel | ✓ Loaded (401 reject confirmed when called without it) |
 | Cron firing hourly | ✓ Live |
-| **Cadence send channel** | **✓ Gmail API (cron tick confirms `channel: "gmail"`)** |
+| **Cadence email behavior** | **✓ Draft-only via Gmail API. Cron creates Gmail drafts in Collie's Drafts folder; she reviews + sends. Cron response confirms `mode: "draft_only"`, `has_workspace: true`, `workspace_email: collie@farleycreative.com`. Never auto-sends.** |
 
-### Architectural pivot mid-session
+### Architectural pivots mid-session (two)
 
-The cadence MVP was first shipped using Resend as the send channel. Winston correctly flagged that sends weren't appearing in Collie's actual inbox (Sent folder) and that we'd referenced Workspace integration multiple times during planning. The right architecture for low-volume operator-driven cadences is **Gmail API via Workspace OAuth** — sends land in the operator's Sent folder, replies thread natively, single inbox UX. Pivot shipped in commit `3f58b61`:
+**Pivot 1 — Resend → Gmail API.** The cadence MVP was first shipped using Resend as the send channel. Winston correctly flagged that sends weren't appearing in Collie's actual inbox (Sent folder) and that we'd referenced Workspace integration multiple times during planning. The right architecture for low-volume operator-driven cadences is **Gmail API via Workspace OAuth** — sends land in the operator's Sent folder, replies thread natively, single inbox UX.
+
+**Pivot 2 — Auto-send → Draft-only.** After Gmail API was wired, Winston articulated the failsafe principle: "when speaking to clients and dealing with real money, we always have that failsafe." The Hub now NEVER auto-sends cadence emails. Cron creates Gmail drafts in Collie's Drafts folder; she reviews + sends each one from Gmail. Mirrors Sage's manual-after-draft pattern but with automated drafting. Resend stays in the codebase for purely transactional uses but is no longer a cadence channel; the cron explicitly does NOT fall back to it on Workspace disconnect (queues instead). Pivot shipped in commit `3f58b61`:
 
 - New schema: `workspace_connections` table for OAuth tokens; `prospect_sends.send_via` column for per-send channel tracking
 - New code: `src/lib/gmail/oauth.ts` (authorize/exchange/refresh/userinfo), `src/lib/gmail/send.ts` (sendViaGmail with auto-refresh), `src/lib/db/workspace-connections.ts` (connection CRUD)
