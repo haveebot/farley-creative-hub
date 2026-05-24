@@ -201,3 +201,101 @@ CREATE INDEX IF NOT EXISTS prospects_next_action_date_idx ON prospects (next_act
 CREATE INDEX IF NOT EXISTS prospect_contacts_prospect_idx ON prospect_contacts (prospect_id);
 CREATE INDEX IF NOT EXISTS prospect_activity_prospect_idx ON prospect_activity (prospect_id);
 CREATE INDEX IF NOT EXISTS prospect_activity_created_at_idx ON prospect_activity (created_at DESC);
+
+-- 2026-05-24: etsy_connections (Etsy OAuth tokens per connected shop).
+-- Backfill: the etsy.ts module references this table but the CREATE was
+-- never committed to schema.sql in the original scaffold.
+CREATE TABLE IF NOT EXISTS etsy_connections (
+  id              SERIAL PRIMARY KEY,
+  shop_id         BIGINT,
+  shop_name       TEXT,
+  access_token    TEXT NOT NULL,
+  refresh_token   TEXT NOT NULL,
+  expires_at      TIMESTAMPTZ NOT NULL,
+  scopes          TEXT[] NOT NULL DEFAULT '{}',
+  connected_by    TEXT NOT NULL,
+  connected_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS etsy_connections_shop_id_idx ON etsy_connections (shop_id);
+CREATE INDEX IF NOT EXISTS etsy_connections_updated_at_idx ON etsy_connections (updated_at DESC);
+
+-- 2026-05-24: cadences (email cascade MVP).
+-- A cadence is an ordered sequence of touchpoints (drafted at send time).
+CREATE TABLE IF NOT EXISTS cadences (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  description   TEXT NOT NULL DEFAULT '',
+  brand_kit_id  INTEGER REFERENCES brand_kits(id) ON DELETE SET NULL,  -- voice to draft in
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS cadences_active_idx ON cadences (is_active);
+
+-- Each step describes timing + a prompt; the actual subject/body are
+-- generated at send time by Claude using brand voice + prospect context.
+CREATE TABLE IF NOT EXISTS cadence_steps (
+  id                SERIAL PRIMARY KEY,
+  cadence_id        INTEGER NOT NULL REFERENCES cadences(id) ON DELETE CASCADE,
+  step_number       INTEGER NOT NULL,            -- 1-indexed
+  delay_days        INTEGER NOT NULL DEFAULT 0,  -- days after previous step (or enrollment for step 1)
+  delay_hours       INTEGER NOT NULL DEFAULT 0,
+  draft_prompt      TEXT NOT NULL,               -- prompt seed for Claude (e.g., "follow-up after no reply, reference original value prop")
+  subject_template  TEXT,                        -- optional explicit subject; if null, Claude drafts
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cadence_id, step_number)
+);
+
+CREATE INDEX IF NOT EXISTS cadence_steps_cadence_idx ON cadence_steps (cadence_id, step_number);
+
+-- A prospect can be enrolled in at most one active cadence at a time.
+CREATE TABLE IF NOT EXISTS prospect_enrollments (
+  id              SERIAL PRIMARY KEY,
+  prospect_id     INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  cadence_id      INTEGER NOT NULL REFERENCES cadences(id) ON DELETE CASCADE,
+  status          TEXT NOT NULL DEFAULT 'active',  -- active | paused | completed | cancelled
+  current_step    INTEGER NOT NULL DEFAULT 0,      -- 0 = not yet sent step 1; advances after each send
+  next_send_at    TIMESTAMPTZ,                     -- null when paused/completed/cancelled
+  enrolled_by     TEXT NOT NULL,
+  enrolled_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at    TIMESTAMPTZ,
+  cancelled_at    TIMESTAMPTZ,
+  cancel_reason   TEXT
+);
+
+-- One active enrollment per prospect (regardless of cadence).
+CREATE UNIQUE INDEX IF NOT EXISTS prospect_enrollments_active_idx
+  ON prospect_enrollments (prospect_id) WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS prospect_enrollments_next_send_idx
+  ON prospect_enrollments (next_send_at) WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS prospect_enrollments_cadence_idx
+  ON prospect_enrollments (cadence_id);
+
+-- Log of every send (or attempted send). One row per step per enrollment.
+CREATE TABLE IF NOT EXISTS prospect_sends (
+  id                SERIAL PRIMARY KEY,
+  enrollment_id     INTEGER NOT NULL REFERENCES prospect_enrollments(id) ON DELETE CASCADE,
+  step_id           INTEGER NOT NULL REFERENCES cadence_steps(id),
+  step_number       INTEGER NOT NULL,
+  to_email          TEXT NOT NULL,
+  to_name           TEXT,
+  subject           TEXT NOT NULL,
+  body              TEXT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | failed | bounced
+  resend_message_id TEXT,                              -- Resend's message ID on successful send
+  error_message     TEXT,
+  scheduled_for     TIMESTAMPTZ NOT NULL,
+  sent_at           TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS prospect_sends_enrollment_idx ON prospect_sends (enrollment_id);
+CREATE INDEX IF NOT EXISTS prospect_sends_status_idx ON prospect_sends (status);
+CREATE INDEX IF NOT EXISTS prospect_sends_scheduled_idx ON prospect_sends (scheduled_for) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS prospect_sends_created_at_idx ON prospect_sends (created_at DESC);
