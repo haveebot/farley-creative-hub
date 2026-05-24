@@ -105,8 +105,9 @@ JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. Tools exposed
 | `DATABASE_URL` | ✅ auto |
 | Custom domain `hub.farleycreative.com` | ✅ Canva DNS CNAME |
 | Collie GitHub access (`colliebreah`) | ✅ invited |
-| Etsy Developer app approved | ⏳ pending Etsy review |
-| `ETSY_CLIENT_ID` + `_SECRET` | ⏳ after approval |
+| Etsy Developer app — `farley-creativ-hub` (original) | ❌ **PERMANENTLY BANNED** 2026-05-24 — third-party-tool framing in original submission (dictated field-by-field, no draft, no policy review). Visible in Collie's developer portal under "Banned Apps". |
+| Etsy Developer app — `farley-girls-creative-hub` (resubmission) | ⏳ **Pending Personal Approval** since 2026-05-24 11:09 AM CT. Submitted from corrected artifact at `Farley Creative Hub/vendor-submissions/etsy-developer-app.md` with single-shop / sole-operator framing. Scopes: `shops_r`, `listings_r`, `listings_w`, `transactions_r`. Rate limit if approved: 5 QPS / 5K QPD. Etsy does NOT send notifications on rejection — check portal manually around 48h mark. Confirmation screenshot at `Farley Creative Hub/vendor-submissions/etsy-submission-2026-05-24-confirmation.png`. |
+| `ETSY_CLIENT_ID` + `_SECRET` | ⏳ after approval — key exists but is NOT active until approved per Etsy's banner |
 | Resend domain verify for `farleycreative.com` | ⏳ next session |
 | `RESEND_API_KEY` + `RESEND_FROM_EMAIL` | ⏳ next session |
 | Send identity locked: `collie@farleycreative.com` via Google Workspace | ✅ decided |
@@ -139,3 +140,4 @@ JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. Tools exposed
 
 - **2026-05-23** — Scaffold session. Repo created, Next.js skeleton, contributor-context, project memory, Vercel deploy.
 - **2026-05-24** — Substantive build day. Auth, brand kits, drafts, assets, pipeline (active + leads), Etsy scaffold, MCP server, activity feed, cadence schema stub. ~33 commits total across both sessions.
+- **2026-05-24 (PM)** — Etsy recovery session. Original `farley-creativ-hub` app discovered permanently banned by Etsy (third-party-tool framing, dictated field-by-field with no draft). Two new cross-project memory rules locked: [[feedback_dont_default_to_emailing_collie]], [[feedback_vendor_submission_is_work]], [[feedback_never_suggest_taking_a_break]]. Drafted corrected single-shop / sole-operator submission artifact at `vendor-submissions/etsy-developer-app.md`. Added public `/privacy` page (commit `f656005`) to satisfy potential privacy-URL requirement. Resubmitted as `farley-girls-creative-hub` at 11:09 AM CT — currently Pending Personal Approval, 24-48h documented review window.
