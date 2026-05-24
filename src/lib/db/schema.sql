@@ -114,6 +114,32 @@ DO $$ BEGIN
 END $$;
 CREATE INDEX IF NOT EXISTS drafts_prospect_id_idx ON drafts (prospect_id);
 
+-- 2026-05-24: leads (upstream of prospects — sourced signals to triage)
+CREATE TABLE IF NOT EXISTS leads (
+  id                        SERIAL PRIMARY KEY,
+  source_type               TEXT NOT NULL DEFAULT 'other',     -- job_posting | rfp | article | social_post | referral_mention | cold_list | other
+  source_url                TEXT,
+  source_title              TEXT,                              -- "Marketing Manager at Acme Co"
+  business_name             TEXT,
+  city                      TEXT,
+  state                     TEXT,                              -- 2-letter
+  industry                  TEXT,                              -- matches prospect industries
+  size                      TEXT,                              -- matches prospect sizes
+  service_signal            TEXT[] NOT NULL DEFAULT '{}',      -- inferred services they may need
+  raw_content               TEXT NOT NULL DEFAULT '',          -- copy of the posting / article body
+  notes                     TEXT NOT NULL DEFAULT '',
+  status                    TEXT NOT NULL DEFAULT 'new',       -- new | reviewing | qualified | converted | dismissed
+  converted_to_prospect_id  INTEGER REFERENCES prospects(id) ON DELETE SET NULL,
+  found_by                  TEXT NOT NULL,
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS leads_status_idx ON leads (status);
+CREATE INDEX IF NOT EXISTS leads_source_type_idx ON leads (source_type);
+CREATE INDEX IF NOT EXISTS leads_state_idx ON leads (state);
+CREATE INDEX IF NOT EXISTS leads_created_at_idx ON leads (created_at DESC);
+
 -- 2026-05-24: link brand_kits to the prospect they were promoted from
 ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS from_prospect_id INTEGER;
 DO $$ BEGIN

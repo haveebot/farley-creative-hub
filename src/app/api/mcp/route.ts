@@ -63,6 +63,15 @@ import {
   PROSPECT_STATUSES,
   SERVICE_INTERESTS,
 } from "@/lib/pipeline-shared";
+import {
+  createLead,
+  getLead,
+  listLeads,
+  type LeadSourceType,
+  type LeadStatus,
+} from "@/lib/db/leads";
+import { LEAD_SOURCE_TYPES, LEAD_STATUSES } from "@/lib/leads-shared";
+import { query } from "@/lib/db/client";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
   "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
@@ -535,6 +544,129 @@ const TOOLS: ToolDef[] = [
         draft_id: typeof args.draft_id === "number" ? args.draft_id : null,
         created_by: `agent:${ctx.agentName}`,
       });
+    },
+  },
+  {
+    name: "list_leads",
+    description:
+      "List sourced leads (signals to triage — job postings, RFPs, article mentions, referrals). Use to see what's in the lead queue, what's still 'new' to review. Filters: status (new/reviewing/qualified/converted/dismissed), source_type, state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: LEAD_STATUSES as unknown as string[] },
+        source_type: { type: "string", enum: LEAD_SOURCE_TYPES as unknown as string[] },
+        state: { type: "string", description: "2-letter US state code" },
+      },
+    },
+    handler: async (args) => {
+      const filter: { status?: LeadStatus; source_type?: LeadSourceType; state?: string } = {};
+      if (typeof args.status === "string") filter.status = args.status as LeadStatus;
+      if (typeof args.source_type === "string") filter.source_type = args.source_type as LeadSourceType;
+      if (typeof args.state === "string") filter.state = args.state.toUpperCase();
+      return listLeads(filter);
+    },
+  },
+  {
+    name: "create_lead",
+    description:
+      "Capture a new lead from a sourced signal — a job posting, RFP, article, social post, referral mention, or cold-list entry. Paste the raw_content (the posting body, article text, etc.) so it stays attached to the lead. fields you fill in (business_name, city, state, industry, size, service_signal) get carried into a prospect later if you convert.",
+    inputSchema: {
+      type: "object",
+      required: ["source_type"],
+      properties: {
+        source_type: { type: "string", enum: LEAD_SOURCE_TYPES as unknown as string[] },
+        source_url: { type: "string" },
+        source_title: { type: "string", description: 'e.g. "Marketing Manager at Acme Co"' },
+        business_name: { type: "string" },
+        city: { type: "string" },
+        state: { type: "string", description: "2-letter US state code" },
+        industry: { type: "string", enum: PROSPECT_INDUSTRIES as unknown as string[] },
+        size: { type: "string", enum: PROSPECT_SIZES as unknown as string[] },
+        service_signal: {
+          type: "array",
+          items: { type: "string", enum: SERVICE_INTERESTS as unknown as string[] },
+          description: "What services they may need, inferred from the source.",
+        },
+        raw_content: { type: "string", description: "Full text of the posting / article body / RFP." },
+        notes: { type: "string", description: "Your own thoughts on why this is interesting." },
+      },
+    },
+    handler: async (args, ctx) => {
+      const source_type = (args.source_type as LeadSourceType) ?? "other";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return createLead({ ...args, source_type, found_by: `agent:${ctx.agentName}` } as any);
+    },
+  },
+  {
+    name: "convert_lead_to_prospect",
+    description:
+      "Promote a lead to an active prospect once you decide to pursue. Requires the lead to have a business_name. Creates a prospect with the lead's fields pre-filled, links the lead to the new prospect, flips lead status to 'converted', and logs the source on the prospect timeline. Returns the new prospect id.",
+    inputSchema: {
+      type: "object",
+      required: ["lead_id"],
+      properties: { lead_id: { type: "integer" } },
+    },
+    handler: async (args, ctx) => {
+      const lead_id = args.lead_id;
+      if (typeof lead_id !== "number") throw new Error("lead_id required");
+      const lead = await getLead(lead_id);
+      if (!lead) throw new Error(`lead ${lead_id} not found`);
+      if (!lead.business_name?.trim()) {
+        throw new Error("lead is missing business_name — fill it in before converting");
+      }
+      if (lead.status === "converted" && lead.converted_to_prospect_id) {
+        return {
+          alreadyConverted: true,
+          prospect_id: lead.converted_to_prospect_id,
+        };
+      }
+
+      const industry =
+        lead.industry && (PROSPECT_INDUSTRIES as unknown as string[]).includes(lead.industry)
+          ? lead.industry
+          : null;
+      const size =
+        lead.size && (PROSPECT_SIZES as unknown as string[]).includes(lead.size)
+          ? lead.size
+          : null;
+      const services = lead.service_signal.filter((s) =>
+        (SERVICE_INTERESTS as unknown as string[]).includes(s),
+      );
+
+      const sourceLine = `Source: ${lead.source_type}`;
+      const urlLine = lead.source_url ? `\nURL: ${lead.source_url}` : "";
+      const titleLine = lead.source_title ? `\nTitle: ${lead.source_title}` : "";
+      const carriedNotes = lead.notes.trim() ? `\n\nNotes from lead:\n${lead.notes.trim()}` : "";
+      const prospectNotes = `${sourceLine}${urlLine}${titleLine}${carriedNotes}`;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prospect = await createProspect({
+        business_name: lead.business_name.trim(),
+        industry,
+        size,
+        city: lead.city,
+        state: lead.state,
+        status: "lead",
+        service_interest: services,
+        notes: prospectNotes,
+        next_action: "Initial outreach",
+        source: lead.source_type === "referral_mention" ? "referral" : "other",
+      } as any);
+
+      await query(
+        `UPDATE leads SET status = 'converted', converted_to_prospect_id = $1, updated_at = NOW() WHERE id = $2`,
+        [prospect.id, lead.id],
+      );
+
+      await logActivity({
+        prospect_id: prospect.id,
+        kind: "note",
+        content: `Converted from lead #${lead.id} (${lead.source_type}${lead.source_url ? ` — ${lead.source_url}` : ""})`,
+        draft_id: null,
+        created_by: `agent:${ctx.agentName}`,
+      }).catch(() => null);
+
+      return { prospect_id: prospect.id, lead_id: lead.id };
     },
   },
 ];
