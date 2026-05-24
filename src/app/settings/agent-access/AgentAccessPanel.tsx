@@ -162,20 +162,42 @@ export default function AgentAccessPanel({
         )}
       </section>
 
-      {/* How to use */}
+      {/* How to use — REST */}
       <section className="pt-4 border-t border-border">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted mb-3">
-          How to use
+          Use as REST API
         </h2>
         <p className="text-sm text-muted leading-relaxed mb-2">
-          Pass the token as a Bearer header on any Hub API request:
+          Pass the token as a Bearer header on any Hub endpoint:
         </p>
         <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
 {`curl https://hub.farleycreative.com/api/brand-kits/studio \\
   -H "Authorization: Bearer fch_…your_token…"`}
         </pre>
         <p className="text-xs text-muted mt-3">
-          Available endpoints (more coming each phase): <code>/api/hub-preferences</code> · <code>/api/brand-kits/studio</code>
+          Endpoints: <code>/api/hub-preferences</code> · <code>/api/brand-kits/studio</code> · <code>/api/assets</code> (more coming each phase)
+        </p>
+      </section>
+
+      {/* How to use — MCP */}
+      <section className="pt-4 border-t border-border">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-muted mb-3">
+          Use as Claude tool (MCP)
+        </h2>
+        <p className="text-sm text-muted leading-relaxed mb-3">
+          The Hub also speaks the Model Context Protocol — once added as a custom connector in Claude, the Hub appears as native tools (alongside Canva). Claude can read brand kits, update voice notes, list assets, etc. without curl.
+        </p>
+        <p className="text-sm text-muted mb-2">MCP server URL:</p>
+        <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
+{`https://hub.farleycreative.com/api/mcp`}
+        </pre>
+        <p className="text-sm text-muted mt-3 mb-2">Auth header:</p>
+        <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
+{`Authorization: Bearer fch_…your_token…`}
+        </pre>
+        <p className="text-xs text-muted mt-3">
+          In Claude: <strong>Settings → Connectors → Add custom connector</strong>, paste the URL + header.
+          Sanity check: open the URL in a browser — you'll see server info and the list of available tools.
         </p>
       </section>
     </div>
