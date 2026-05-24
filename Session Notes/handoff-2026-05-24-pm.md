@@ -25,6 +25,7 @@
 | `e2e8400` | docs: log cadence MVP shipping + operator-side prereqs |
 | `01405de` | fix: cast `'{}'` literal to `text[]` in array-column inserts (lead capture bug) |
 | `4fd78b2` | docs: split MCP setup instructions for Claude Code vs Claude desktop |
+| `3f58b61` | **feat: pivot cadence sends to Gmail API (Workspace) — Resend becomes fallback** |
 
 ## Where things stand
 
@@ -38,14 +39,32 @@
 ### Email infrastructure — DONE, fully verified
 | | Status |
 |---|---|
-| Resend domain `farleycreative.com` | ✓ Verified |
+| Resend domain `farleycreative.com` | ✓ Verified (fallback channel only) |
 | Workspace secondary domain `farleycreative.com` | ✓ Verified |
 | `collie@farleycreative.com` user | ✓ Created, end-to-end mail tested |
 | Canva DNS records (5 added in zero-disruption pass + Google MX) | ✓ All propagated globally |
-| `RESEND_API_KEY` in Vercel | ✓ Loaded (`has_resend: true` confirmed via cron tick) |
-| `RESEND_FROM_EMAIL` = `Farley Girls Creative <collie@farleycreative.com>` | ✓ Loaded |
+| Google Cloud project `farley-creative-hub` (under PFV org) | ✓ Created, Gmail API enabled |
+| OAuth consent screen (Internal — PFV-org-only access) | ✓ Configured, gmail.modify scope |
+| OAuth Client ID `Farley Creative Hub — production` | ✓ Created, redirect URI `/api/workspace/callback` |
+| `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` in Vercel | ✓ Loaded |
+| Workspace OAuth grant to `collie@farleycreative.com` | ✓ Connected, 4 scopes granted |
+| `RESEND_API_KEY` + `_FROM_EMAIL` in Vercel | ✓ Loaded (fallback only) |
 | `CRON_SECRET` in Vercel | ✓ Loaded (401 reject confirmed when called without it) |
 | Cron firing hourly | ✓ Live |
+| **Cadence send channel** | **✓ Gmail API (cron tick confirms `channel: "gmail"`)** |
+
+### Architectural pivot mid-session
+
+The cadence MVP was first shipped using Resend as the send channel. Winston correctly flagged that sends weren't appearing in Collie's actual inbox (Sent folder) and that we'd referenced Workspace integration multiple times during planning. The right architecture for low-volume operator-driven cadences is **Gmail API via Workspace OAuth** — sends land in the operator's Sent folder, replies thread natively, single inbox UX. Pivot shipped in commit `3f58b61`:
+
+- New schema: `workspace_connections` table for OAuth tokens; `prospect_sends.send_via` column for per-send channel tracking
+- New code: `src/lib/gmail/oauth.ts` (authorize/exchange/refresh/userinfo), `src/lib/gmail/send.ts` (sendViaGmail with auto-refresh), `src/lib/db/workspace-connections.ts` (connection CRUD)
+- New routes: `/api/workspace/connect`, `/api/workspace/callback`, `/api/workspace/disconnect`
+- New UI: `/settings/workspace` with operator setup instructions when GOOGLE_OAUTH_CLIENT_ID isn't set
+- Cron rewrite: picks channel at top of tick — gmail (preferred) → resend (fallback) → queue
+- Settings nav: Workspace added as a tab between Agent access and Etsy
+
+Memory rule locked alongside the pivot: [[feedback_hear_what_winston_says_not_my_framework]] — when the same tool/preference appears twice in a session, STOP and re-architect or explicitly push back; don't paper over with a "both for different jobs" framework.
 
 ### Etsy — PENDING (external)
 - `farley-girls-creative-hub` Pending Personal Approval. Watch the developer portal around 48h mark (~5-26 11AM CT).
@@ -80,6 +99,7 @@ Prod has this table from scaffold day; superseded by `brand_kits`. DROP TABLE wh
 - [[feedback_dont_default_to_emailing_collie]] — operator-side mistakes get diagnosed on our side first; only loop tenants in when they hold information we can't derive.
 - [[feedback_vendor_submission_is_work]] — Claude drafts + reviews vendor submission content BEFORE dictating form values. Never field-dictate at portal time.
 - [[feedback_never_suggest_taking_a_break]] — do not ever suggest Winston take a break.
+- [[feedback_hear_what_winston_says_not_my_framework]] — when Winston references a tool/preference more than once in a session, treat the second mention as a STOP signal: re-architect or push back explicitly, don't paper over with a "both for different jobs" framework.
 
 ## How to resume
 
