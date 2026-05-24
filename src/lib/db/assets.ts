@@ -1,42 +1,15 @@
 /**
- * Asset library CRUD.
+ * Asset library CRUD — server-only (imports pg).
  *
- * One row per file in the studio's library. The actual file bytes
- * live in Vercel Blob; this table just stores metadata + the public
- * URL. Optional brand_kit_id links assets to a specific brand kit
- * (logo, brand book, etc.).
+ * Client code should import types/constants/helpers from
+ * `@/lib/assets-shared` instead, which has no DB deps.
  */
 
 import { query, queryOne } from "./client";
+import type { Asset, AssetKind } from "@/lib/assets-shared";
 
-export type AssetKind =
-  | "general"
-  | "logo"
-  | "brand_book"
-  | "design_master"
-  | "design_export";
-
-export const ASSET_KINDS: AssetKind[] = [
-  "general",
-  "logo",
-  "brand_book",
-  "design_master",
-  "design_export",
-];
-
-export type Asset = {
-  id: number;
-  name: string;
-  filename: string;
-  url: string;
-  mime_type: string;
-  size_bytes: number;
-  kind: AssetKind;
-  brand_kit_id: number | null;
-  description: string;
-  uploaded_by: string;
-  created_at: Date;
-};
+export type { Asset, AssetKind } from "@/lib/assets-shared";
+export { ASSET_KINDS, formatSize } from "@/lib/assets-shared";
 
 export type AssetCreate = {
   name: string;
@@ -109,14 +82,4 @@ export async function deleteAsset(id: number): Promise<Asset | null> {
     `DELETE FROM assets WHERE id = $1 RETURNING *`,
     [id],
   );
-}
-
-/**
- * Human-readable size formatting. 1.4 MB, 240 KB, etc.
- */
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }

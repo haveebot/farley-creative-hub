@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ASSET_KINDS, formatSize, type Asset, type AssetKind } from "@/lib/db/assets";
+import { ASSET_KINDS, formatSize, type Asset, type AssetKind } from "@/lib/assets-shared";
 import type { BrandKit } from "@/lib/db/brand-kits";
 
 const KIND_LABELS: Record<AssetKind, string> = {
