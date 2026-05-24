@@ -185,19 +185,45 @@ export default function AgentAccessPanel({
           Use as Claude tool (MCP)
         </h2>
         <p className="text-sm text-muted leading-relaxed mb-3">
-          The Hub also speaks the Model Context Protocol — once added as a custom connector in Claude, the Hub appears as native tools (alongside Canva). Claude can read brand kits, update voice notes, list assets, etc. without curl.
+          The Hub speaks the Model Context Protocol — once added, the Hub's tools appear inside Claude (read brand kits, update voice notes, list assets, manage the pipeline, etc.) without curl.
         </p>
-        <p className="text-sm text-muted mb-2">MCP server URL:</p>
+
+        <p className="text-sm text-muted mb-2">Server URL:</p>
         <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
 {`https://hub.farleycreative.com/api/mcp`}
         </pre>
-        <p className="text-sm text-muted mt-3 mb-2">Auth header:</p>
+
+        <p className="text-sm text-muted mt-4 mb-2">Auth header (when prompted):</p>
         <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
 {`Authorization: Bearer fch_…your_token…`}
         </pre>
-        <p className="text-xs text-muted mt-3">
-          In Claude: <strong>Settings → Connectors → Add custom connector</strong>, paste the URL + header.
-          Sanity check: open the URL in a browser — you'll see server info and the list of available tools.
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-1">If you use <strong>Claude Code</strong> (the CLI):</p>
+            <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
+{`claude mcp add farley-creative-hub \\
+  https://hub.farleycreative.com/api/mcp \\
+  --scope user \\
+  --transport http \\
+  --header "Authorization: Bearer fch_…your_token…"`}
+            </pre>
+            <p className="text-xs text-muted mt-1">
+              Verify with <code>claude mcp list</code>. Tools appear prefixed as
+              {" "}<code>mcp__farley-creative-hub__*</code>.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium mb-1">If you use the <strong>Claude desktop app</strong> (Mac / Windows):</p>
+            <p className="text-xs text-muted">
+              <strong>Settings → Connectors → Add custom connector</strong>, paste the URL above and add the Authorization header.
+            </p>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted mt-5">
+          Sanity check: open the URL in a browser — you'll see server info and the list of available tools (no auth required for that endpoint).
         </p>
       </section>
     </div>
