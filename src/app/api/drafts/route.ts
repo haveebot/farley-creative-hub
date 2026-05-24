@@ -2,8 +2,8 @@
  * Drafts API.
  *
  *   GET  /api/drafts                — list drafts (optional ?status= or ?kind=)
- *   POST /api/drafts                — create a draft (calls Claude to generate
- *                                     content from the prompt unless content is
+ *   POST /api/drafts                — create a draft (Claude drafts content
+ *                                     from the prompt unless content is
  *                                     supplied directly)
  *
  * Auth: cookie (UI) or Bearer agent token.
@@ -13,15 +13,14 @@
  *     title: string,
  *     kind: DraftKind,
  *     prompt: string,
- *     content?: string  // optional — if provided, skips Claude call
- *                       //          (useful when the caller already
- *                       //          drafted via Claude Code MCP)
+ *     content?: string,        // skip Claude call when provided
+ *     brand_kit_id?: number,   // which voice to use; defaults to studio
  *   }
  */
 
 import { NextResponse } from "next/server";
 import { requireAuth, type AuthContext } from "@/lib/auth/require";
-import { getStudioKit } from "@/lib/db/brand-kits";
+import { getBrandKit, getStudioKit } from "@/lib/db/brand-kits";
 import {
   createDraft,
   DRAFT_KINDS,
@@ -67,6 +66,12 @@ export async function POST(request: Request) {
   const kindRaw = typeof body.kind === "string" ? body.kind.trim() : "general";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   const providedContent = typeof body.content === "string" ? body.content : null;
+  const brandKitIdRaw =
+    typeof body.brand_kit_id === "number"
+      ? body.brand_kit_id
+      : typeof body.brand_kit_id === "string"
+      ? parseInt(body.brand_kit_id, 10)
+      : null;
 
   if (!title) {
     return NextResponse.json(
@@ -79,7 +84,21 @@ export async function POST(request: Request) {
     ? (kindRaw as DraftKind)
     : "general";
 
-  // If content wasn't pre-supplied, draft via Claude using brand voice.
+  // Resolve which brand kit voice to use. Default to studio.
+  let brand;
+  if (brandKitIdRaw && Number.isFinite(brandKitIdRaw)) {
+    brand = await getBrandKit(brandKitIdRaw as number);
+    if (!brand) {
+      return NextResponse.json(
+        { ok: false, error: "brand-kit-not-found" },
+        { status: 400 },
+      );
+    }
+  } else {
+    brand = await getStudioKit();
+  }
+
+  // If content wasn't pre-supplied, draft via Claude.
   let content: string;
   let modelUsed: string | null = null;
   if (providedContent !== null) {
@@ -92,7 +111,6 @@ export async function POST(request: Request) {
       );
     }
     try {
-      const brand = await getStudioKit();
       const result = await draftWithClaude({ kind, prompt, brand });
       content = result.content;
       modelUsed = result.model;
@@ -106,13 +124,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const studio = await getStudioKit();
     const record = await createDraft({
       title,
       kind,
       prompt,
       content,
-      brand_kit_id: studio.id,
+      brand_kit_id: brand.id,
       model_used: modelUsed,
       created_by: createdByLabel(auth),
     });

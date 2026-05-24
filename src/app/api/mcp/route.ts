@@ -22,7 +22,13 @@
 import { NextResponse } from "next/server";
 import { verifyAgentToken } from "@/lib/db/agent-tokens";
 import { getHubPreferences, updateHubPreferences } from "@/lib/db/hub-preferences";
-import { getStudioKit, updateBrandKit } from "@/lib/db/brand-kits";
+import {
+  createClientKit,
+  getBrandKit,
+  getStudioKit,
+  listBrandKits,
+  updateBrandKit,
+} from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
 import {
   createDraft,
@@ -178,7 +184,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "create_draft",
     description:
-      "Create a draft in the Hub. Two modes: (1) pass a prompt and Claude drafts content grounded in the studio brand voice + brand book notes; (2) pass content directly to save text you've already drafted in the conversation. Provide a short title so it's findable later. Pick the correct kind so the draft formats appropriately. Drafts start in status 'draft' for review.",
+      "Create a draft in the Hub. Two modes: (1) pass a prompt and Claude drafts content grounded in the specified brand voice + brand book notes; (2) pass content directly to save text you've already drafted in the conversation. brand_kit_id picks which voice to use — defaults to studio. Provide a short title so it's findable later. Pick the correct kind so the draft formats appropriately. Drafts start in status 'draft' for review.",
     inputSchema: {
       type: "object",
       required: ["title", "kind"],
@@ -196,12 +202,17 @@ const TOOLS: ToolDef[] = [
         prompt: {
           type: "string",
           description:
-            "What to draft (used if `content` is not provided). Claude will draft using the studio brand voice + brand book notes.",
+            "What to draft (used if `content` is not provided). Claude drafts using the selected brand voice + brand book notes.",
         },
         content: {
           type: "string",
           description:
             "Pre-drafted content to save directly. If provided, skips the Claude call. Useful when you've already drafted in your conversation.",
+        },
+        brand_kit_id: {
+          type: "integer",
+          description:
+            "Which brand kit's voice to draft in. Omit for studio voice. Use list_brand_kits to find client kit ids.",
         },
       },
     },
@@ -228,16 +239,107 @@ const TOOLS: ToolDef[] = [
         modelUsed = result.model;
       }
 
-      const studio = await getStudioKit();
+      // Resolve brand kit — use args.brand_kit_id if provided, else studio.
+      let brand;
+      const brandKitIdRaw = args.brand_kit_id;
+      if (typeof brandKitIdRaw === "number") {
+        brand = await getBrandKit(brandKitIdRaw);
+        if (!brand) throw new Error(`brand_kit_id ${brandKitIdRaw} not found`);
+      } else {
+        brand = await getStudioKit();
+      }
+
+      // If content wasn't pre-supplied, draft via Claude using THIS kit.
+      // (Override the earlier studio-only draft above.)
+      if (providedContent === null && prompt) {
+        const result = await draftWithClaude({ kind, prompt, brand });
+        content = result.content;
+        modelUsed = result.model;
+      }
+
       return createDraft({
         title,
         kind,
         prompt,
         content,
-        brand_kit_id: studio.id,
+        brand_kit_id: brand.id,
         model_used: modelUsed,
         created_by: `agent:${ctx.agentName}`,
       });
+    },
+  },
+  {
+    name: "list_brand_kits",
+    description:
+      "List all brand kits — the studio's own kit (is_studio_self: true) and any client brand kits the studio maintains. Use this to find a brand_kit_id when drafting in a specific client's voice.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => listBrandKits(),
+  },
+  {
+    name: "get_brand_kit",
+    description:
+      "Read a specific brand kit by id (studio or client). Returns name, voice notes, brand book notes, color palette, social URLs.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "integer" },
+      },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      const kit = await getBrandKit(id);
+      if (!kit) throw new Error(`brand_kit_id ${id} not found`);
+      return kit;
+    },
+  },
+  {
+    name: "create_client_brand_kit",
+    description:
+      "Create a new CLIENT brand kit (not the studio's own). Use when onboarding a new client whose brand the studio will be creating content for. Returns the new kit including its id, which can be passed to create_draft via brand_kit_id.",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string", description: "Client name (the brand name they go by)." },
+        bio: { type: "string" },
+        primary_color: { type: "string" },
+        secondary_color: { type: "string" },
+        accent_color: { type: "string" },
+        voice_notes: { type: "string" },
+        brand_book_notes: { type: "string" },
+        etsy_shop_url: { type: "string" },
+        website_url: { type: "string" },
+        instagram_url: { type: "string" },
+        pinterest_url: { type: "string" },
+      },
+    },
+    handler: async (args) => {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (!name) throw new Error("name is required");
+      const input: Record<string, string> = { name };
+      for (const f of [
+        "bio",
+        "primary_color",
+        "secondary_color",
+        "accent_color",
+        "voice_notes",
+        "brand_book_notes",
+        "etsy_shop_url",
+        "website_url",
+        "instagram_url",
+        "pinterest_url",
+      ]) {
+        if (typeof args[f] === "string") input[f] = (args[f] as string).trim();
+      }
+      for (const f of ["primary_color", "secondary_color", "accent_color"]) {
+        const v = input[f];
+        if (typeof v === "string" && !HEX_COLOR_OR_EMPTY.test(v)) {
+          throw new Error(`${f.replace(/_/g, " ")} must be a hex value or empty`);
+        }
+      }
+      return createClientKit(input as never);
     },
   },
 ];

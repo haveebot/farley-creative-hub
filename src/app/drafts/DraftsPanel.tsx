@@ -11,24 +11,32 @@ import {
   type DraftKind,
   type DraftStatus,
 } from "@/lib/drafts-shared";
+import type { BrandKit } from "@/lib/db/brand-kits";
 
 type CreateStatus = "idle" | "drafting" | "error";
 
 export default function DraftsPanel({
   initialDrafts,
+  brandKits,
 }: {
   initialDrafts: Draft[];
+  brandKits: BrandKit[];
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
   const [filterStatus, setFilterStatus] = useState<DraftStatus | "all">("all");
   const [filterKind, setFilterKind] = useState<DraftKind | "all">("all");
 
+  const studioKit = brandKits.find((k) => k.is_studio_self);
+
   // Create-form state
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<DraftKind>("listing");
   const [prompt, setPrompt] = useState("");
+  const [brandKitId, setBrandKitId] = useState<string>(
+    studioKit ? String(studioKit.id) : "",
+  );
   const [createStatus, setCreateStatus] = useState<CreateStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -56,7 +64,12 @@ export default function DraftsPanel({
       const res = await fetch("/api/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), kind, prompt: prompt.trim() }),
+        body: JSON.stringify({
+          title: title.trim(),
+          kind,
+          prompt: prompt.trim(),
+          brand_kit_id: brandKitId ? parseInt(brandKitId, 10) : undefined,
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -169,17 +182,32 @@ export default function DraftsPanel({
               required
             />
           </Field>
-          <Field label="Kind">
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as DraftKind)}
-              className={inputClasses}
-            >
-              {DRAFT_KINDS.map((k) => (
-                <option key={k} value={k}>{KIND_LABELS[k]}</option>
-              ))}
-            </select>
-          </Field>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Kind">
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as DraftKind)}
+                className={inputClasses}
+              >
+                {DRAFT_KINDS.map((k) => (
+                  <option key={k} value={k}>{KIND_LABELS[k]}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Voice" hint="Which brand voice Claude will draft in.">
+              <select
+                value={brandKitId}
+                onChange={(e) => setBrandKitId(e.target.value)}
+                className={inputClasses}
+              >
+                {brandKits.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.name} {k.is_studio_self ? "(studio)" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
           <Field label="Prompt" hint="What do you want Claude to draft? Be as specific or loose as you want — Claude grounds in your brand voice + brand book notes either way.">
             <textarea
               value={prompt}

@@ -43,7 +43,7 @@ export default function BrandKitForm({ initial }: { initial: BrandKit }) {
 
     setStatus("saving");
     try {
-      const res = await fetch("/api/brand-kits/studio", {
+      const res = await fetch(`/api/brand-kits/${initial.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
