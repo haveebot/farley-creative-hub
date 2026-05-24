@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
+import { listBrandKits } from "@/lib/db/brand-kits";
+import { listDrafts } from "@/lib/db/drafts";
 import { getProspect, listActivity, listContacts } from "@/lib/db/prospects";
+import { query } from "@/lib/db/client";
 import TopNav from "../../TopNav";
 import ProspectDetail from "./ProspectDetail";
 
@@ -17,10 +20,18 @@ export default async function ProspectPage({
   const prospect = await getProspect(numId);
   if (!prospect) return notFound();
 
-  const [contacts, activity] = await Promise.all([
+  const [contacts, activity, drafts, brandKits, promotedKitRows] = await Promise.all([
     listContacts(numId),
     listActivity(numId),
+    listDrafts({ prospect_id: numId }),
+    listBrandKits(),
+    query<{ id: number; name: string }>(
+      `SELECT id, name FROM brand_kits WHERE from_prospect_id = $1 LIMIT 1`,
+      [numId],
+    ),
   ]);
+
+  const promotedKit = promotedKitRows[0] ?? null;
 
   return (
     <>
@@ -40,6 +51,9 @@ export default async function ProspectPage({
             initialProspect={prospect}
             initialContacts={contacts}
             initialActivity={activity}
+            initialDrafts={drafts}
+            brandKits={brandKits}
+            promotedKit={promotedKit}
           />
         </div>
       </main>

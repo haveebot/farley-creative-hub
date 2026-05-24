@@ -25,6 +25,7 @@ export type DraftCreate = {
   prompt: string;
   content: string;
   brand_kit_id?: number | null;
+  prospect_id?: number | null;
   model_used?: string | null;
   created_by: string;
 };
@@ -39,6 +40,7 @@ export type DraftUpdate = Partial<{
 export type DraftListFilter = {
   status?: DraftStatus;
   kind?: DraftKind;
+  prospect_id?: number;
 };
 
 export async function listDrafts(filter: DraftListFilter = {}): Promise<Draft[]> {
@@ -53,6 +55,10 @@ export async function listDrafts(filter: DraftListFilter = {}): Promise<Draft[]>
     params.push(filter.kind);
     where.push(`kind = $${params.length}`);
   }
+  if (typeof filter.prospect_id === "number") {
+    params.push(filter.prospect_id);
+    where.push(`prospect_id = $${params.length}`);
+  }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const sql = `SELECT * FROM drafts ${whereSql} ORDER BY created_at DESC`;
@@ -66,8 +72,8 @@ export async function getDraft(id: number): Promise<Draft | null> {
 export async function createDraft(input: DraftCreate): Promise<Draft> {
   const row = await queryOne<Draft>(
     `INSERT INTO drafts
-      (title, kind, prompt, content, brand_kit_id, model_used, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+      (title, kind, prompt, content, brand_kit_id, prospect_id, model_used, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       input.title,
@@ -75,6 +81,7 @@ export async function createDraft(input: DraftCreate): Promise<Draft> {
       input.prompt,
       input.content,
       input.brand_kit_id ?? null,
+      input.prospect_id ?? null,
       input.model_used ?? null,
       input.created_by,
     ],

@@ -100,6 +100,33 @@ CREATE INDEX IF NOT EXISTS drafts_status_idx ON drafts (status);
 CREATE INDEX IF NOT EXISTS drafts_kind_idx ON drafts (kind);
 CREATE INDEX IF NOT EXISTS drafts_created_at_idx ON drafts (created_at DESC);
 
+-- 2026-05-24: link drafts to prospects (outreach drafts grounded in prospect context)
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS prospect_id INTEGER;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'drafts_prospect_id_fkey' AND table_name = 'drafts'
+  ) THEN
+    ALTER TABLE drafts
+      ADD CONSTRAINT drafts_prospect_id_fkey
+      FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS drafts_prospect_id_idx ON drafts (prospect_id);
+
+-- 2026-05-24: link brand_kits to the prospect they were promoted from
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS from_prospect_id INTEGER;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'brand_kits_from_prospect_id_fkey' AND table_name = 'brand_kits'
+  ) THEN
+    ALTER TABLE brand_kits
+      ADD CONSTRAINT brand_kits_from_prospect_id_fkey
+      FOREIGN KEY (from_prospect_id) REFERENCES prospects(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
 -- Phase 1: sales pipeline (prospects, contacts, activity)
 CREATE TABLE IF NOT EXISTS prospects (
   id                SERIAL PRIMARY KEY,

@@ -28,6 +28,13 @@ import {
   type ProspectStatus,
   type ServiceInterest,
 } from "@/lib/pipeline-shared";
+import {
+  DRAFT_KINDS,
+  KIND_LABELS as DRAFT_KIND_LABELS,
+  type Draft,
+  type DraftKind,
+} from "@/lib/drafts-shared";
+import type { BrandKit } from "@/lib/db/brand-kits";
 
 const ACTIVITY_KINDS = Object.keys(ACTIVITY_KIND_LABELS) as ActivityKind[];
 
@@ -35,15 +42,24 @@ export default function ProspectDetail({
   initialProspect,
   initialContacts,
   initialActivity,
+  initialDrafts,
+  brandKits,
+  promotedKit,
 }: {
   initialProspect: Prospect;
   initialContacts: ProspectContact[];
   initialActivity: ProspectActivityRow[];
+  initialDrafts: Draft[];
+  brandKits: BrandKit[];
+  promotedKit: { id: number; name: string } | null;
 }) {
   const router = useRouter();
   const [prospect, setProspect] = useState(initialProspect);
   const [contacts, setContacts] = useState(initialContacts);
   const [activity, setActivity] = useState(initialActivity);
+  const [drafts, setDrafts] = useState(initialDrafts);
+  const [promoted, setPromoted] = useState(promotedKit);
+  const [promoteStatus, setPromoteStatus] = useState<"idle" | "promoting">("idle");
 
   async function updateField(updates: Partial<Prospect>) {
     const res = await fetch(`/api/prospects/${prospect.id}`, {
@@ -64,11 +80,40 @@ export default function ProspectDetail({
     if (res.ok) router.push("/pipeline");
   }
 
+  async function handlePromote() {
+    if (promoted) {
+      router.push(`/brand/${promoted.id}`);
+      return;
+    }
+    setPromoteStatus("promoting");
+    try {
+      const res = await fetch(`/api/prospects/${prospect.id}/promote`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPromoted({ id: data.kit.id, name: data.kit.name });
+        if (data.prospect) setProspect(data.prospect);
+        router.push(`/brand/${data.kit.id}`);
+      }
+    } finally {
+      setPromoteStatus("idle");
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left two cols: details + activity */}
+      {/* Left two cols: details + drafts + activity */}
       <div className="lg:col-span-2 space-y-6">
         <DetailsCard prospect={prospect} onUpdate={updateField} />
+        <DraftsCard
+          prospectId={prospect.id}
+          prospectName={prospect.business_name}
+          drafts={drafts}
+          brandKits={brandKits}
+          onAdd={(d) => setDrafts([d, ...drafts])}
+          onActivityAdded={(a) => setActivity([a, ...activity])}
+        />
         <ActivityCard
           prospectId={prospect.id}
           activity={activity}
@@ -76,12 +121,18 @@ export default function ProspectDetail({
         />
       </div>
 
-      {/* Right col: contacts + danger zone */}
+      {/* Right col: contacts + promote + danger */}
       <div className="space-y-6">
         <ContactsCard
           prospectId={prospect.id}
           contacts={contacts}
           onChange={setContacts}
+        />
+        <PromoteCard
+          prospect={prospect}
+          promoted={promoted}
+          promoting={promoteStatus === "promoting"}
+          onPromote={handlePromote}
         />
         <div className="p-5 border border-border rounded-lg bg-surface text-sm">
           <button
@@ -94,6 +145,214 @@ export default function ProspectDetail({
         </div>
       </div>
     </div>
+  );
+}
+
+function PromoteCard({
+  prospect,
+  promoted,
+  promoting,
+  onPromote,
+}: {
+  prospect: Prospect;
+  promoted: { id: number; name: string } | null;
+  promoting: boolean;
+  onPromote: () => void;
+}) {
+  return (
+    <section className="p-5 border border-border rounded-lg bg-surface text-sm">
+      <h2 className="text-sm font-medium uppercase tracking-wider text-muted mb-2">
+        {promoted ? "Client kit" : "Promote to client"}
+      </h2>
+      {promoted ? (
+        <>
+          <p className="text-sm mb-3">
+            Linked to brand kit{" "}
+            <a href={`/brand/${promoted.id}`} className="underline font-medium">
+              {promoted.name}
+            </a>
+            . Future drafts can use this client's voice.
+          </p>
+          <button
+            type="button"
+            onClick={onPromote}
+            className="text-sm underline hover:text-foreground"
+          >
+            Open kit →
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-muted mb-3">
+            {prospect.status === "signed"
+              ? "Ready to convert to a client brand kit."
+              : "Create a client brand kit from this prospect. Status will flip to Signed."}
+          </p>
+          <button
+            type="button"
+            onClick={onPromote}
+            disabled={promoting}
+            className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {promoting ? "Promoting…" : "Promote to client kit"}
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
+function DraftsCard({
+  prospectId,
+  prospectName,
+  drafts,
+  brandKits,
+  onAdd,
+  onActivityAdded,
+}: {
+  prospectId: number;
+  prospectName: string;
+  drafts: Draft[];
+  brandKits: BrandKit[];
+  onAdd: (d: Draft) => void;
+  onActivityAdded: (a: ProspectActivityRow) => void;
+}) {
+  const studioKit = brandKits.find((k) => k.is_studio_self);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<DraftKind>("email");
+  const [prompt, setPrompt] = useState("");
+  const [brandKitId, setBrandKitId] = useState<string>(
+    studioKit ? String(studioKit.id) : "",
+  );
+  const [drafting, setDrafting] = useState(false);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim() || !prompt.trim()) return;
+    setDrafting(true);
+    try {
+      const res = await fetch("/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          kind,
+          prompt: prompt.trim(),
+          brand_kit_id: brandKitId ? parseInt(brandKitId, 10) : undefined,
+          prospect_id: prospectId,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onAdd(data.draft);
+        // The server auto-logs a "Draft created" activity — refetch wouldn't
+        // pick it up here without a refresh, so synthesize a row for the UI.
+        onActivityAdded({
+          id: -Date.now(),
+          prospect_id: prospectId,
+          kind: "note",
+          content: `Draft created: "${title.trim()}" (${kind})`,
+          draft_id: data.draft.id,
+          created_by: "you",
+          created_at: new Date(),
+        });
+        setTitle("");
+        setPrompt("");
+        setShowForm(false);
+      }
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  return (
+    <section className="p-5 border border-border rounded-lg bg-surface">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+          Drafts for this prospect
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowForm(!showForm)}
+          className="text-xs underline hover:text-foreground"
+        >
+          {showForm ? "Cancel" : "+ Draft with Claude"}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleCreate} className="mb-4 space-y-2 text-sm">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={`e.g. Intro email to ${prospectName}`}
+            required
+            className={inlineInputClasses}
+          />
+          <div className="flex gap-2">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as DraftKind)}
+              className={`${inlineInputClasses} w-auto`}
+            >
+              {DRAFT_KINDS.map((k) => (
+                <option key={k} value={k}>{DRAFT_KIND_LABELS[k]}</option>
+              ))}
+            </select>
+            <select
+              value={brandKitId}
+              onChange={(e) => setBrandKitId(e.target.value)}
+              className={`${inlineInputClasses} w-auto`}
+            >
+              {brandKits.map((k) => (
+                <option key={k.id} value={k.id}>
+                  Voice: {k.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={4}
+            placeholder="What do you want Claude to draft? Their industry, size, services, and notes are already in context."
+            className={inlineInputClasses}
+            required
+          />
+          <button
+            type="submit"
+            disabled={drafting || !title.trim() || !prompt.trim()}
+            className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium disabled:opacity-50"
+          >
+            {drafting ? "Drafting…" : "Draft with Claude"}
+          </button>
+        </form>
+      )}
+
+      {drafts.length === 0 ? (
+        <p className="text-sm text-muted">
+          No drafts for {prospectName} yet. Use the button above to create one — Claude will use this prospect's context automatically.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {drafts.map((d) => (
+            <li key={d.id} className="text-sm">
+              <a
+                href="/drafts"
+                className="flex items-baseline justify-between gap-3 hover:text-foreground transition"
+              >
+                <span className="truncate">
+                  <span className="text-xs text-muted">{DRAFT_KIND_LABELS[d.kind] ?? d.kind} ·</span> {d.title}
+                </span>
+                <span className="text-xs text-muted shrink-0">{d.status}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -551,3 +810,6 @@ function InlineSelect({
 
 const inputClasses =
   "w-full px-3 py-1.5 bg-transparent border border-border rounded-md text-sm focus:outline-none focus:border-accent transition";
+
+const inlineInputClasses =
+  "w-full px-3 py-2 bg-transparent border border-border rounded-md text-sm focus:outline-none focus:border-accent transition";

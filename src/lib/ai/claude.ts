@@ -10,6 +10,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BrandKit } from "@/lib/db/brand-kits";
 import type { DraftKind } from "@/lib/drafts-shared";
+import type { Prospect } from "@/lib/db/prospects";
+import {
+  INDUSTRY_LABELS,
+  SERVICE_LABELS,
+  SIZE_LABELS,
+} from "@/lib/pipeline-shared";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS = 2000;
@@ -106,6 +112,7 @@ export type DraftRequest = {
   kind: DraftKind;
   prompt: string;
   brand: BrandKit;
+  prospect?: Prospect | null;
 };
 
 export type DraftResponse = {
@@ -113,26 +120,61 @@ export type DraftResponse = {
   model: string;
 };
 
+function buildProspectBlock(p: Prospect): string {
+  const lines = [
+    "DRAFTING FOR THIS PROSPECT — they are the audience or subject of this draft.",
+    "",
+    `Name: ${p.business_name}`,
+  ];
+  if (p.industry) lines.push(`Industry: ${INDUSTRY_LABELS[p.industry] ?? p.industry}`);
+  if (p.size) lines.push(`Size: ${SIZE_LABELS[p.size] ?? p.size}`);
+  if (p.city || p.state) {
+    lines.push(`Location: ${[p.city, p.state].filter(Boolean).join(", ")}`);
+  }
+  if (p.website_url) lines.push(`Website: ${p.website_url}`);
+  if (p.service_interest.length > 0) {
+    lines.push(
+      `Services they'd hire for: ${p.service_interest.map((s) => SERVICE_LABELS[s] ?? s).join(", ")}`,
+    );
+  }
+  if (p.notes && p.notes.trim()) {
+    lines.push("", "Operator notes on this prospect:", p.notes.trim());
+  }
+  lines.push(
+    "",
+    "Use this context to ground the draft. Reference what they actually do; don't make up facts not in this context.",
+  );
+  return lines.join("\n");
+}
+
 export async function draftWithClaude(req: DraftRequest): Promise<DraftResponse> {
   const client = getClient();
 
   const brandSystem = buildBrandSystemBlock(req.brand);
   const kindSystem = kindGuidance(req.kind);
 
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: brandSystem,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
+  if (req.prospect) {
+    // Prospect context varies per call — don't cache.
+    systemBlocks.push({
+      type: "text",
+      text: buildProspectBlock(req.prospect),
+    });
+  }
+
+  systemBlocks.push({ type: "text", text: kindSystem });
+
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: MAX_TOKENS,
-    system: [
-      {
-        type: "text",
-        text: brandSystem,
-        cache_control: { type: "ephemeral" },
-      },
-      {
-        type: "text",
-        text: kindSystem,
-      },
-    ],
+    system: systemBlocks,
     messages: [
       {
         role: "user",
@@ -141,7 +183,6 @@ export async function draftWithClaude(req: DraftRequest): Promise<DraftResponse>
     ],
   });
 
-  // Concatenate any text blocks in the response.
   const text = response.content
     .map((block) => (block.type === "text" ? block.text : ""))
     .join("\n")

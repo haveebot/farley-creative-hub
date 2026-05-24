@@ -56,6 +56,7 @@ export type Draft = {
   prompt: string;
   content: string;
   brand_kit_id: number | null;
+  prospect_id: number | null;
   model_used: string | null;
   created_by: string;
   created_at: Date;

@@ -1,20 +1,20 @@
 /**
  * Drafts API.
  *
- *   GET  /api/drafts                — list drafts (optional ?status= or ?kind=)
+ *   GET  /api/drafts                — list drafts (optional ?status / ?kind / ?prospect_id)
  *   POST /api/drafts                — create a draft (Claude drafts content
  *                                     from the prompt unless content is
  *                                     supplied directly)
- *
- * Auth: cookie (UI) or Bearer agent token.
  *
  * POST body:
  *   {
  *     title: string,
  *     kind: DraftKind,
  *     prompt: string,
- *     content?: string,        // skip Claude call when provided
- *     brand_kit_id?: number,   // which voice to use; defaults to studio
+ *     content?: string,
+ *     brand_kit_id?: number,
+ *     prospect_id?: number,   // optional — drafts FOR/ABOUT a prospect get
+ *                              //           prospect context + auto-log activity
  *   }
  */
 
@@ -30,6 +30,7 @@ import {
   type DraftStatus,
 } from "@/lib/db/drafts";
 import { draftWithClaude } from "@/lib/ai/claude";
+import { getProspect, logActivity } from "@/lib/db/prospects";
 
 export async function GET(request: Request) {
   const auth = await requireAuth();
@@ -38,13 +39,18 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const statusParam = url.searchParams.get("status");
   const kindParam = url.searchParams.get("kind");
+  const prospectParam = url.searchParams.get("prospect_id");
 
-  const filter: { status?: DraftStatus; kind?: DraftKind } = {};
+  const filter: { status?: DraftStatus; kind?: DraftKind; prospect_id?: number } = {};
   if (statusParam && (DRAFT_STATUSES as string[]).includes(statusParam)) {
     filter.status = statusParam as DraftStatus;
   }
   if (kindParam && (DRAFT_KINDS as string[]).includes(kindParam)) {
     filter.kind = kindParam as DraftKind;
+  }
+  if (prospectParam) {
+    const pid = parseInt(prospectParam, 10);
+    if (Number.isFinite(pid)) filter.prospect_id = pid;
   }
 
   const drafts = await listDrafts(filter);
@@ -72,6 +78,12 @@ export async function POST(request: Request) {
       : typeof body.brand_kit_id === "string"
       ? parseInt(body.brand_kit_id, 10)
       : null;
+  const prospectIdRaw =
+    typeof body.prospect_id === "number"
+      ? body.prospect_id
+      : typeof body.prospect_id === "string" && body.prospect_id
+      ? parseInt(body.prospect_id, 10)
+      : null;
 
   if (!title) {
     return NextResponse.json(
@@ -84,7 +96,7 @@ export async function POST(request: Request) {
     ? (kindRaw as DraftKind)
     : "general";
 
-  // Resolve which brand kit voice to use. Default to studio.
+  // Resolve brand kit (default to studio).
   let brand;
   if (brandKitIdRaw && Number.isFinite(brandKitIdRaw)) {
     brand = await getBrandKit(brandKitIdRaw as number);
@@ -98,7 +110,19 @@ export async function POST(request: Request) {
     brand = await getStudioKit();
   }
 
-  // If content wasn't pre-supplied, draft via Claude.
+  // Resolve optional prospect context.
+  let prospect = null;
+  if (prospectIdRaw && Number.isFinite(prospectIdRaw)) {
+    prospect = await getProspect(prospectIdRaw as number);
+    if (!prospect) {
+      return NextResponse.json(
+        { ok: false, error: "prospect-not-found" },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Draft via Claude unless content was pre-supplied.
   let content: string;
   let modelUsed: string | null = null;
   if (providedContent !== null) {
@@ -106,16 +130,16 @@ export async function POST(request: Request) {
   } else {
     if (!prompt) {
       return NextResponse.json(
-        { ok: false, error: "prompt-required", message: "Provide a prompt (for Claude to draft from) or content (to save directly)." },
+        { ok: false, error: "prompt-required", message: "Provide a prompt or content." },
         { status: 400 },
       );
     }
     try {
-      const result = await draftWithClaude({ kind, prompt, brand });
+      const result = await draftWithClaude({ kind, prompt, brand, prospect });
       content = result.content;
       modelUsed = result.model;
     } catch (err) {
-      console.error("[api/drafts POST] Claude call failed", err);
+      console.error("[api/drafts POST] Claude failed", err);
       return NextResponse.json(
         { ok: false, error: "draft-failed", message: (err as Error).message },
         { status: 502 },
@@ -130,9 +154,25 @@ export async function POST(request: Request) {
       prompt,
       content,
       brand_kit_id: brand.id,
+      prospect_id: prospect?.id ?? null,
       model_used: modelUsed,
       created_by: createdByLabel(auth),
     });
+
+    // If linked to a prospect, auto-log activity so the timeline reflects
+    // that a draft was created for them.
+    if (prospect) {
+      await logActivity({
+        prospect_id: prospect.id,
+        kind: "note",
+        content: `Draft created: "${title}" (${kind})`,
+        draft_id: record.id,
+        created_by: createdByLabel(auth),
+      }).catch((err) =>
+        console.warn("[api/drafts POST] auto-log activity failed", err),
+      );
+    }
+
     return NextResponse.json({ ok: true, draft: record });
   } catch (err) {
     console.error("[api/drafts POST] DB insert failed", err);

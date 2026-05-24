@@ -2,6 +2,7 @@ import { getCurrentOperatorEmail } from "@/lib/auth/session";
 import { listBrandKits } from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
 import { listDrafts } from "@/lib/db/drafts";
+import { listProspects } from "@/lib/db/prospects";
 import { KIND_LABELS } from "@/lib/drafts-shared";
 import Greeting from "./Greeting";
 import TopNav from "./TopNav";
@@ -9,11 +10,12 @@ import TopNav from "./TopNav";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [email, kits, assets, allDrafts] = await Promise.all([
+  const [email, kits, assets, allDrafts, allProspects] = await Promise.all([
     getCurrentOperatorEmail(),
     listBrandKits(),
     listAssets(),
     listDrafts(),
+    listProspects(),
   ]);
 
   const studio = kits.find((k) => k.is_studio_self);
@@ -22,10 +24,23 @@ export default async function Home() {
   const draftStatus = allDrafts.filter((d) => d.status === "draft");
   const recentAssets = assets.slice(0, 3);
 
-  // 24h cutoff for "Today" activity
+  // Prospects with a due-today-or-overdue next_action_date.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const overdueProspects = allProspects
+    .filter(
+      (p) =>
+        p.next_action_date &&
+        p.next_action_date <= todayIso &&
+        !["signed", "passed", "dormant"].includes(p.status),
+    )
+    .sort((a, b) => (a.next_action_date ?? "").localeCompare(b.next_action_date ?? ""));
+
+  // 24h cutoff for "Today" activity.
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const todayDrafts = allDrafts.filter((d) => new Date(d.created_at) > dayAgo);
   const todayAssets = assets.filter((a) => new Date(a.created_at) > dayAgo);
+
+  const awaitingCount = draftStatus.length + overdueProspects.length;
 
   return (
     <>
@@ -39,39 +54,79 @@ export default async function Home() {
 
         <section className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Awaiting You */}
-          <Card title="Awaiting you" subtitle={`${draftStatus.length} ${draftStatus.length === 1 ? "draft" : "drafts"}`} href="/drafts">
-            {draftStatus.length === 0 ? (
+          <div className="p-6 border border-border rounded-lg bg-surface h-full">
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-sm font-medium uppercase tracking-wider">
+                Awaiting you
+              </h2>
+              <span className="text-xs text-muted">
+                {awaitingCount === 0 ? "all clear" : `${awaitingCount} item${awaitingCount === 1 ? "" : "s"}`}
+              </span>
+            </div>
+            {awaitingCount === 0 ? (
               <p className="text-sm text-muted">
-                Nothing waiting. New drafts (yours or Claude&apos;s) land here for review.
+                Nothing waiting. Open drafts and overdue prospect actions land here.
               </p>
             ) : (
-              <ul className="space-y-2 text-sm">
-                {draftStatus.slice(0, 4).map((d) => (
-                  <li key={d.id} className="truncate">
-                    <span className="text-xs text-muted">{KIND_LABELS[d.kind] ?? d.kind} ·</span> {d.title}
-                  </li>
-                ))}
-                {draftStatus.length > 4 && (
-                  <li className="text-xs text-muted pt-1">
-                    + {draftStatus.length - 4} more →
-                  </li>
+              <div className="space-y-4 text-sm">
+                {overdueProspects.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted mb-1">
+                      Prospects
+                    </p>
+                    <ul className="space-y-1">
+                      {overdueProspects.slice(0, 3).map((p) => (
+                        <li key={p.id} className="truncate">
+                          <a
+                            href={`/pipeline/${p.id}`}
+                            className="hover:text-foreground transition"
+                          >
+                            <span className="text-xs text-red-600">●</span> {p.business_name} — {p.next_action ?? "follow up"}
+                          </a>
+                        </li>
+                      ))}
+                      {overdueProspects.length > 3 && (
+                        <li className="text-xs text-muted">+ {overdueProspects.length - 3} more →</li>
+                      )}
+                    </ul>
+                  </div>
                 )}
-              </ul>
+                {draftStatus.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted mb-1">
+                      Drafts
+                    </p>
+                    <ul className="space-y-1">
+                      {draftStatus.slice(0, 3).map((d) => (
+                        <li key={d.id} className="truncate">
+                          <a href="/drafts" className="hover:text-foreground transition">
+                            <span className="text-xs text-muted">{KIND_LABELS[d.kind] ?? d.kind} ·</span> {d.title}
+                          </a>
+                        </li>
+                      ))}
+                      {draftStatus.length > 3 && (
+                        <li className="text-xs text-muted">+ {draftStatus.length - 3} more →</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
-          </Card>
+          </div>
 
           {/* Today */}
-          <Card
-            title="Today"
-            subtitle={
-              todayDrafts.length + todayAssets.length === 0
-                ? "—"
-                : `${todayDrafts.length + todayAssets.length} new`
-            }
-          >
+          <div className="p-6 border border-border rounded-lg bg-surface h-full">
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-sm font-medium uppercase tracking-wider">Today</h2>
+              <span className="text-xs text-muted">
+                {todayDrafts.length + todayAssets.length === 0
+                  ? "—"
+                  : `${todayDrafts.length + todayAssets.length} new`}
+              </span>
+            </div>
             {todayDrafts.length + todayAssets.length === 0 ? (
               <p className="text-sm text-muted">
-                Nothing yet today. Create a draft, upload an asset, or refine a brand kit.
+                Nothing yet today. Create a draft, upload an asset, or move a prospect.
               </p>
             ) : (
               <ul className="text-sm space-y-2">
@@ -87,14 +142,24 @@ export default async function Home() {
                 )}
               </ul>
             )}
-          </Card>
+          </div>
 
           {/* Quick actions */}
-          <Card title="Quick actions" subtitle="">
+          <div className="p-6 border border-border rounded-lg bg-surface h-full">
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-sm font-medium uppercase tracking-wider">
+                Quick actions
+              </h2>
+            </div>
             <ul className="text-sm space-y-2 text-muted">
               <li>
                 <a href="/drafts" className="hover:text-foreground transition">
                   → Draft something with Claude
+                </a>
+              </li>
+              <li>
+                <a href="/pipeline/new" className="hover:text-foreground transition">
+                  → Add a prospect
                 </a>
               </li>
               <li>
@@ -107,13 +172,8 @@ export default async function Home() {
                   → Upload assets {assets.length > 0 && `(${assets.length})`}
                 </a>
               </li>
-              <li>
-                <a href="/settings/agent-access" className="hover:text-foreground transition">
-                  → Manage agent tokens
-                </a>
-              </li>
             </ul>
-          </Card>
+          </div>
         </section>
 
         {/* Recent assets strip */}
@@ -158,34 +218,4 @@ export default async function Home() {
       </main>
     </>
   );
-}
-
-function Card({
-  title,
-  subtitle,
-  href,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  href?: string;
-  children: React.ReactNode;
-}) {
-  const inner = (
-    <div className="p-6 border border-border rounded-lg bg-surface h-full">
-      <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-sm font-medium uppercase tracking-wider">{title}</h2>
-        <span className="text-xs text-muted">{subtitle}</span>
-      </div>
-      <div className="text-sm leading-relaxed">{children}</div>
-    </div>
-  );
-  if (href) {
-    return (
-      <a href={href} className="block hover:opacity-90 transition">
-        {inner}
-      </a>
-    );
-  }
-  return inner;
 }
