@@ -138,3 +138,106 @@ export async function parseLead(rawText: string): Promise<ParsedLead> {
     summary: typeof parsed.summary === "string" ? parsed.summary : null,
   };
 }
+
+const DIGEST_MAX_INPUT = 60_000; // digests are bigger; allow ~15k tokens of input
+const DIGEST_MAX_TOKENS = 4000;
+
+const DIGEST_SYSTEM_PROMPT = `You parse inbound emails into lead records for a creative-studio sales pipeline.
+
+The email might be:
+  (A) A SINGLE job posting, RFP, social-mention forwarding, or article. → return an array with ONE lead.
+  (B) A DIGEST email from a job board (Indeed daily digest, AngelList weekly, LinkedIn alerts, etc.) containing multiple postings. → return an array with ONE lead PER posting.
+  (C) Noise / not lead-relevant (newsletter, transactional email, no actual leads). → return an empty array.
+
+Output ONLY a JSON array (no markdown fences, no surrounding text), where each item has the shape:
+
+{
+  "business_name": string | null,
+  "source_title": string | null,
+  "city": string | null,
+  "state": string | null,
+  "industry": "food_beverage" | "retail" | "professional_services" | "health_wellness" | "arts_creative" | "technology" | "hospitality" | "nonprofit" | "other" | null,
+  "size": "solo" | "small" | "medium" | "larger" | null,
+  "service_signal": string[],
+  "summary": string,
+  "raw_content": string  // YOUR best extraction of just the part of the original email that pertains to THIS lead (so the operator has the source posting attached). For a single-item input, this is the whole email. For a digest, this is the section about this specific posting.
+}
+
+Rules:
+- For digests: each posting becomes its own item. Don't merge similar-looking postings.
+- For empty input or non-lead emails: return [].
+- service_signal: same vocab as before — subset of ["brand_identity", "web_design", "marketing", "strategy", "packaging", "social_media", "content", "other"]. Only include services the source actually signals.
+- summary: 1-2 sentence outreach angle, not just facts.
+- Skip "boosted" / "promoted" / "sponsored" entries in digests unless they're substantive.
+- If a digest contains 30 jobs that all look identical (same company spamming postings), include only one representative entry.
+- Do NOT wrap the JSON in markdown code fences. Output raw JSON only.`;
+
+export type DigestParseResult = Omit<ParsedLead, "raw_content"> & {
+  raw_content: string;
+};
+
+/**
+ * Parse an inbound email that may be a single lead OR a digest with
+ * multiple items. Returns an array of parsed leads (possibly empty).
+ */
+export async function parseDigest(rawText: string): Promise<DigestParseResult[]> {
+  const client = getClient();
+  const text = rawText.slice(0, DIGEST_MAX_INPUT);
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: DIGEST_MAX_TOKENS,
+    system: DIGEST_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `Inbound email to parse:\n\n${text}`,
+      },
+    ],
+  });
+
+  const reply = response.content
+    .map((b) => (b.type === "text" ? b.text : ""))
+    .join("\n")
+    .trim();
+
+  const jsonText = reply
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error(`Claude returned non-JSON for digest: ${reply.slice(0, 200)}…`);
+  }
+
+  if (!Array.isArray(parsed)) {
+    // Defensive: if Claude returned a single object, wrap it.
+    if (typeof parsed === "object" && parsed !== null) {
+      parsed = [parsed];
+    } else {
+      return [];
+    }
+  }
+
+  return (parsed as Array<Record<string, unknown>>).map((item) => ({
+    business_name: typeof item.business_name === "string" ? item.business_name : null,
+    source_title: typeof item.source_title === "string" ? item.source_title : null,
+    city: typeof item.city === "string" ? item.city : null,
+    state: typeof item.state === "string" ? item.state.toUpperCase() : null,
+    industry: typeof item.industry === "string" ? item.industry : null,
+    size: typeof item.size === "string" ? item.size : null,
+    service_signal: Array.isArray(item.service_signal)
+      ? (item.service_signal as unknown[]).filter(
+          (s): s is string => typeof s === "string",
+        )
+      : [],
+    raw_content:
+      typeof item.raw_content === "string" && item.raw_content.trim()
+        ? item.raw_content.trim()
+        : text.slice(0, 5000), // fallback: first 5k chars of whole email
+    summary: typeof item.summary === "string" ? item.summary : null,
+  }));
+}

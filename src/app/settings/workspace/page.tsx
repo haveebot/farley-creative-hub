@@ -103,6 +103,24 @@ export default async function WorkspaceSettingsPage({
                 <strong>{connection.email}</strong>'s Gmail Drafts folder.
                 Every email is reviewed + sent by the human operator — never auto-sent.
               </p>
+              <div className="mt-4 pt-3 border-t border-border">
+                <p className="text-xs uppercase tracking-widest text-muted mb-2">
+                  Lead capture from inbox
+                </p>
+                <p className="text-xs text-muted">
+                  The Hub polls Gmail every 30 minutes for messages with the
+                  label <code>Hub/Leads</code>. Each message gets parsed by Claude
+                  into one or more leads (digests like Indeed daily can produce many
+                  leads from one email), and the label is removed when done.
+                </p>
+                <p className="text-xs text-muted mt-2">
+                  To use: in Gmail → <strong>Settings → Filters and Blocked Addresses → Create new filter</strong>,
+                  match the senders you want (e.g. <code>from:noreply@indeed.com</code>,
+                  <code>from:alerts@angellist.com</code>), and check{" "}
+                  <strong>Apply the label: Hub/Leads</strong>. The Hub creates the label
+                  automatically on first poll if it doesn't exist.
+                </p>
+              </div>
             </section>
           ) : (
             <section className="p-5 border border-border rounded-lg bg-surface">

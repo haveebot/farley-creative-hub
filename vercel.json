@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/cadence-tick",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/lead-poll",
+      "schedule": "30 * * * *"
     }
   ]
 }
