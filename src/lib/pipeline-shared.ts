@@ -140,6 +140,7 @@ export const SOURCE_LABELS: Record<ProspectSource, string> = {
 
 export type ActivityKind =
   | "email_sent"
+  | "email_drafted"
   | "call"
   | "meeting"
   | "proposal_sent"
@@ -148,6 +149,7 @@ export type ActivityKind =
 
 export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
   email_sent: "Email sent",
+  email_drafted: "Email drafted (awaiting review)",
   call: "Call",
   meeting: "Meeting",
   proposal_sent: "Proposal sent",

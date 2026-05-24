@@ -245,17 +245,31 @@ function ActiveEnrollmentView({
                   className={`text-xs uppercase tracking-wider ml-2 flex-shrink-0 ${
                     s.status === "sent"
                       ? "text-accent"
-                      : s.status === "failed" || s.status === "bounced"
-                        ? "text-red-600"
-                        : "text-muted"
+                      : s.status === "drafted"
+                        ? "text-foreground font-medium"
+                        : s.status === "failed" || s.status === "bounced"
+                          ? "text-red-600"
+                          : "text-muted"
                   }`}
                 >
-                  {s.status}
+                  {s.status === "drafted" ? "review in gmail" : s.status}
                   {s.sent_at && " · " + new Date(s.sent_at).toLocaleDateString()}
                 </span>
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted mt-3 italic">
+            Hub drafts emails; you review + send from{" "}
+            <a
+              href="https://mail.google.com/mail/u/0/#drafts"
+              target="_blank"
+              rel="noopener"
+              className="underline"
+            >
+              Gmail Drafts
+            </a>
+            .
+          </p>
         </div>
       )}
     </div>

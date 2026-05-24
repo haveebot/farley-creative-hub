@@ -311,6 +311,23 @@ export async function markSendSent(id: number, externalMessageId: string): Promi
   return row;
 }
 
+/**
+ * Mark a send as drafted (Gmail draft created, awaiting human review + send).
+ * Stores the Gmail draft id in the resend_message_id column.
+ */
+export async function markSendDrafted(id: number, draftId: string): Promise<ProspectSend> {
+  const row = await queryOne<ProspectSend>(
+    `UPDATE prospect_sends
+        SET status = 'drafted',
+            resend_message_id = $2
+      WHERE id = $1
+      RETURNING *`,
+    [id, draftId],
+  );
+  if (!row) throw new Error("Failed to mark send drafted");
+  return row;
+}
+
 export async function markSendFailed(id: number, error: string): Promise<ProspectSend> {
   const row = await queryOne<ProspectSend>(
     `UPDATE prospect_sends

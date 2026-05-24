@@ -23,7 +23,7 @@ export default async function WorkspaceSettingsPage({
             </p>
             <h1 className="text-2xl font-serif mb-2">Google Workspace</h1>
             <p className="text-sm text-muted leading-relaxed">
-              Connect a Google Workspace account so the Hub can send cadence emails through it. Sends land in the connected account's Sent folder; replies come back to its Inbox; threading is native. Without a connection, cadence sends fall back to Resend (if configured) or queue.
+              Connect a Google Workspace account so the Hub can draft cadence emails into its Gmail Drafts folder. The Hub never auto-sends — every email gets human review + send from Gmail. Replies thread back to the Inbox natively. Without a connection, cadence drafts queue until Workspace is connected.
             </p>
             <p className="text-xs text-muted mt-4">
               <a href="/settings" className="underline">← Settings</a>
@@ -99,8 +99,9 @@ export default async function WorkspaceSettingsPage({
                 </form>
               </div>
               <p className="text-xs text-muted mt-4 pt-3 border-t border-border">
-                Cadence sends now route through Gmail API as{" "}
-                <strong>{connection.email}</strong>. Sends land in their Sent folder.
+                Cadence emails now draft into{" "}
+                <strong>{connection.email}</strong>'s Gmail Drafts folder.
+                Every email is reviewed + sent by the human operator — never auto-sent.
               </p>
             </section>
           ) : (

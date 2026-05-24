@@ -55,10 +55,11 @@ export type ProspectEnrollment = {
   cancel_reason: string | null;
 };
 
-export type SendStatus = "pending" | "sent" | "failed" | "bounced";
+export type SendStatus = "pending" | "drafted" | "sent" | "failed" | "bounced";
 
 export const SEND_STATUSES: SendStatus[] = [
   "pending",
+  "drafted",
   "sent",
   "failed",
   "bounced",

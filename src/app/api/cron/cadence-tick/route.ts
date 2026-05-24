@@ -1,28 +1,32 @@
 /**
- * Cadence cron tick — processes due enrollments.
+ * Cadence cron tick — DRAFT-ONLY mode.
  *
  *   GET /api/cron/cadence-tick
  *
  * Invoked by Vercel Cron per vercel.json. Authenticated via CRON_SECRET
  * (Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`).
  *
- * Send channel preference (per tick, decided once at top):
- *   1. Gmail (via /settings/workspace OAuth connection) — preferred.
- *      Sends land in the connected account's Sent folder, replies
- *      thread natively.
- *   2. Resend — fallback if no Workspace connection is active.
- *   3. None — neither configured. Sends queue in pending state without
- *      advancing the enrollment, so the operator sees the queue waiting.
+ * Failsafe principle: the cron NEVER auto-sends an email. It drafts
+ * each due step into the connected Workspace account's Gmail Drafts
+ * folder. The human operator (Collie) reviews + sends from there.
+ * Source of truth lives in her inbox, not the Hub.
  *
  * For each due enrollment:
  *   1. Load cadence + step + prospect + primary contact + brand
  *   2. Draft via Claude (subject + body) using brand voice + prospect context
- *   3. Create prospect_sends row with the chosen send_via
- *   4. Try to send via the chosen channel; advance enrollment on send
- *      success (or send failure — don't get stuck on a bad address);
- *      Claude draft failure does NOT advance (transient — retry next tick)
+ *   3. Create prospect_sends row tagged 'drafted'
+ *   4. Create a Gmail draft in the connected account's Drafts folder
+ *   5. Advance the enrollment (the cron's job for this step is done;
+ *      sending is now in Collie's hands)
  *
- * Idempotency-ish: limit to 50 enrollments per tick.
+ * No-Workspace fallback: if no Workspace connection is active, the
+ * tick queues the send in 'pending' state WITHOUT advancing — so the
+ * queue waits for Workspace to be connected, rather than silently
+ * skipping or auto-sending via some other channel.
+ *
+ * Resend is no longer a fallback for cadence emails. Kept in the
+ * codebase for purely transactional uses (signup notifications, etc.)
+ * but the cron tick does not call it.
  */
 
 import { NextResponse } from "next/server";
@@ -33,29 +37,23 @@ import {
   advanceEnrollment,
   createSend,
   findDueEnrollments,
-  markSendFailed,
-  markSendSent,
+  markSendDrafted,
 } from "@/lib/db/enrollments";
-import { sendEmail } from "@/lib/email";
-import { sendViaGmail } from "@/lib/gmail/send";
+import { createGmailDraft } from "@/lib/gmail/send";
 import { getActiveConnection as getWorkspaceConnection } from "@/lib/db/workspace-connections";
 import { getProspect, listContacts, logActivity } from "@/lib/db/prospects";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // seconds
-
-type Channel = "gmail" | "resend" | "none";
+export const maxDuration = 60;
 
 type Outcome =
-  | "sent"
-  | "send_failed"
-  | "queued_no_channel"
+  | "drafted"
+  | "skipped_no_workspace"
   | "skipped_no_contact"
   | "skipped_no_step"
   | "draft_failed";
 
 export async function GET(request: Request) {
-  // Vercel Cron auth — see https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const header = request.headers.get("authorization") ?? "";
@@ -64,10 +62,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Decide the send channel for this tick.
   const workspaceConnection = await getWorkspaceConnection();
-  const hasResend = !!process.env.RESEND_API_KEY && !!process.env.RESEND_FROM_EMAIL;
-  const channel: Channel = workspaceConnection ? "gmail" : hasResend ? "resend" : "none";
 
   const due = await findDueEnrollments(50);
   const results: Array<{
@@ -91,7 +86,6 @@ export async function GET(request: Request) {
 
       const step = steps.find((s) => s.step_number === nextStepNumber);
       if (!step) {
-        // No more steps — complete the enrollment.
         await advanceEnrollment(enrollment.id);
         results.push({
           enrollment_id: enrollment.id,
@@ -126,12 +120,26 @@ export async function GET(request: Request) {
         continue;
       }
 
-      // Voice = cadence's brand kit; fall back to studio kit.
+      if (!workspaceConnection) {
+        // No Workspace connection — queue without drafting OR sending.
+        // We do NOT auto-send via any other channel. Operator must connect
+        // Workspace at /settings/workspace; the queued sends will be drafted
+        // on the next tick after connection.
+        results.push({
+          enrollment_id: enrollment.id,
+          prospect_id: enrollment.prospect_id,
+          step_number: nextStepNumber,
+          outcome: "skipped_no_workspace",
+          detail: "Workspace not connected — connect at /settings/workspace to enable drafting",
+        });
+        // Don't advance; next tick will retry after Workspace is connected.
+        continue;
+      }
+
       const brand =
         (cadence?.brand_kit_id ? await getBrandKit(cadence.brand_kit_id) : null) ??
         (await getStudioKit());
 
-      // Draft via Claude.
       let subject: string;
       let body: string;
       try {
@@ -156,7 +164,6 @@ export async function GET(request: Request) {
         continue;
       }
 
-      // Create the send row, tagged with the channel we plan to use.
       const send = await createSend({
         enrollment_id: enrollment.id,
         step_id: step.id,
@@ -166,43 +173,21 @@ export async function GET(request: Request) {
         subject,
         body,
         scheduled_for: enrollment.next_send_at ?? new Date(),
-        send_via: channel,
+        send_via: "gmail",
       });
 
-      if (channel === "none") {
-        results.push({
-          enrollment_id: enrollment.id,
-          prospect_id: enrollment.prospect_id,
-          step_number: nextStepNumber,
-          outcome: "queued_no_channel",
-          detail:
-            "No send channel available — connect Workspace at /settings/workspace, or set RESEND_API_KEY + RESEND_FROM_EMAIL. Send queued in pending state.",
-        });
-        // Don't advance — operator sees a queued send waiting for a channel.
-        continue;
-      }
-
       try {
-        let messageId = "";
-        if (channel === "gmail") {
-          const result = await sendViaGmail({
-            to: primary.email,
-            toName: primary.name,
-            subject,
-            text: body,
-          });
-          messageId = result.id;
-        } else {
-          // channel === 'resend'
-          await sendEmail({ to: primary.email, subject, text: body });
-          // sendEmail doesn't expose the Resend message id; empty string ok.
-        }
-
-        await markSendSent(send.id, messageId);
+        const draftResult = await createGmailDraft({
+          to: primary.email,
+          toName: primary.name,
+          subject,
+          text: body,
+        });
+        await markSendDrafted(send.id, draftResult.draftId);
         await logActivity({
           prospect_id: enrollment.prospect_id,
-          kind: "email_sent",
-          content: `Cadence step ${step.step_number} (${channel}): ${subject}`,
+          kind: "email_drafted",
+          content: `Cadence step ${step.step_number}: ${subject} (review in Gmail Drafts)`,
           created_by: "cron:cadence-tick",
         });
         await advanceEnrollment(enrollment.id);
@@ -210,21 +195,20 @@ export async function GET(request: Request) {
           enrollment_id: enrollment.id,
           prospect_id: enrollment.prospect_id,
           step_number: nextStepNumber,
-          outcome: "sent",
+          outcome: "drafted",
         });
       } catch (err) {
         console.error(
-          `[cadence-tick] ${channel} send failed for enrollment ${enrollment.id}`,
+          `[cadence-tick] Gmail draft create failed for enrollment ${enrollment.id}`,
           err,
         );
-        await markSendFailed(send.id, (err as Error).message);
-        // Advance on send failure so we don't get stuck on a bad address.
-        await advanceEnrollment(enrollment.id);
+        // Don't mark failed on prospect_sends; keep as 'pending' so next
+        // tick retries. Don't advance.
         results.push({
           enrollment_id: enrollment.id,
           prospect_id: enrollment.prospect_id,
           step_number: nextStepNumber,
-          outcome: "send_failed",
+          outcome: "draft_failed",
           detail: (err as Error).message,
         });
       }
@@ -243,9 +227,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     processed: results.length,
-    channel,
+    mode: "draft_only",
     has_workspace: !!workspaceConnection,
-    has_resend: hasResend,
+    workspace_email: workspaceConnection?.email ?? null,
     results,
   });
 }

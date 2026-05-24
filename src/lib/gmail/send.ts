@@ -16,6 +16,7 @@ import {
 import { refreshAccessToken } from "./oauth";
 
 const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_DRAFTS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/drafts";
 
 export type GmailSendOptions = {
   to: string;
@@ -105,6 +106,67 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
   }
   const data = (await res.json()) as { id: string; threadId: string };
   return { id: data.id, threadId: data.threadId };
+}
+
+export type GmailDraftResult = {
+  draftId: string;
+  messageId: string;
+  threadId: string;
+};
+
+/**
+ * Create a Gmail DRAFT (in the connected account's Drafts folder).
+ * Does NOT send. The operator opens Gmail, reviews/edits, then sends
+ * from there — landing in their Sent folder like any normal Gmail send.
+ *
+ * This is the failsafe path for cadence emails: the cron drafts;
+ * the human approves + sends.
+ */
+export async function createGmailDraft(opts: GmailSendOptions): Promise<GmailDraftResult> {
+  const { accessToken, connection } = await getValidAccessToken();
+
+  const fromHeader = connection.email;
+  const toHeader = opts.toName
+    ? `${formatHeaderName(opts.toName)} <${opts.to}>`
+    : opts.to;
+
+  const headers: string[] = [
+    `From: ${fromHeader}`,
+    `To: ${toHeader}`,
+    `Subject: ${encodeSubject(opts.subject)}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 7bit",
+  ];
+  if (opts.inReplyTo) {
+    headers.push(`In-Reply-To: ${opts.inReplyTo}`);
+    headers.push(`References: ${opts.inReplyTo}`);
+  }
+
+  const rfc822 = headers.join("\r\n") + "\r\n\r\n" + opts.text;
+  const raw = Buffer.from(rfc822, "utf8").toString("base64url");
+
+  const res = await fetch(GMAIL_DRAFTS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message: { raw } }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gmail draft create failed: ${res.status} — ${text}`);
+  }
+  const data = (await res.json()) as {
+    id: string;
+    message: { id: string; threadId: string };
+  };
+  return {
+    draftId: data.id,
+    messageId: data.message.id,
+    threadId: data.message.threadId,
+  };
 }
 
 /**
