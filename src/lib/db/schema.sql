@@ -19,8 +19,12 @@ CREATE TABLE IF NOT EXISTS hub_preferences (
   id            SERIAL PRIMARY KEY,
   hub_label     TEXT NOT NULL DEFAULT 'Farley Creative Hub',
   accent_color  TEXT NOT NULL DEFAULT '#c97d5d',
+  theme         TEXT NOT NULL DEFAULT 'light',
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Phase 1: theme added 2026-05-24 — light | dark (system option later)
+ALTER TABLE hub_preferences ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'light';
 
 -- Phase 1: brand_kits (studio + clients; same shape, scoped by is_studio_self)
 CREATE TABLE IF NOT EXISTS brand_kits (

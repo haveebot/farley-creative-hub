@@ -2,16 +2,26 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { HubPreferences } from "@/lib/db/hub-preferences";
+import {
+  HUB_THEMES,
+  type HubPreferences,
+  type HubTheme,
+} from "@/lib/db/hub-preferences";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
+const THEME_LABELS: Record<HubTheme, string> = {
+  light: "Light",
+  dark: "Dark",
+};
+
 export default function HubSettingsForm({ initial }: { initial: HubPreferences }) {
   const router = useRouter();
   const [hubLabel, setHubLabel] = useState(initial.hub_label);
   const [accentColor, setAccentColor] = useState(initial.accent_color);
+  const [theme, setTheme] = useState<HubTheme>(initial.theme);
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -30,7 +40,11 @@ export default function HubSettingsForm({ initial }: { initial: HubPreferences }
       const res = await fetch("/api/hub-preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hub_label: hubLabel, accent_color: accentColor }),
+        body: JSON.stringify({
+          hub_label: hubLabel,
+          accent_color: accentColor,
+          theme,
+        }),
       });
 
       if (res.ok) {
@@ -59,6 +73,26 @@ export default function HubSettingsForm({ initial }: { initial: HubPreferences }
           className={inputClasses}
         />
       </Field>
+
+      <Field label="Theme" hint="Light or dark — applies across every Hub surface.">
+        <div className="flex items-center gap-2">
+          {HUB_THEMES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTheme(t)}
+              className={`px-4 py-2 rounded-md text-sm border transition ${
+                theme === t
+                  ? "border-accent bg-surface-strong"
+                  : "border-border hover:border-foreground/40"
+              }`}
+            >
+              {THEME_LABELS[t]}
+            </button>
+          ))}
+        </div>
+      </Field>
+
       <Field label="Hub accent color" hint="The accent color used by buttons, links, and focus rings in the Hub. Separate from your studio's actual brand color — pick whatever you like to look at.">
         <div className="flex items-center gap-3">
           <input
@@ -75,6 +109,7 @@ export default function HubSettingsForm({ initial }: { initial: HubPreferences }
           />
         </div>
       </Field>
+
       <div className="flex items-center gap-4 pt-4 border-t border-border">
         <button
           type="submit"

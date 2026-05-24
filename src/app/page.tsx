@@ -134,7 +134,7 @@ export default async function Home() {
                   href={a.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="block aspect-video bg-white/40 border border-border rounded overflow-hidden hover:border-accent transition"
+                  className="block aspect-video bg-surface border border-border rounded overflow-hidden hover:border-accent transition"
                 >
                   {a.mime_type.startsWith("image/") ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
@@ -172,7 +172,7 @@ function Card({
   children: React.ReactNode;
 }) {
   const inner = (
-    <div className="p-6 border border-border rounded-lg bg-white/40 h-full">
+    <div className="p-6 border border-border rounded-lg bg-surface h-full">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-sm font-medium uppercase tracking-wider">{title}</h2>
         <span className="text-xs text-muted">{subtitle}</span>

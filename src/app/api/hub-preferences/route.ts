@@ -12,8 +12,10 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/require";
 import {
   getHubPreferences,
+  HUB_THEMES,
   updateHubPreferences,
   type HubPreferencesUpdate,
+  type HubTheme,
 } from "@/lib/db/hub-preferences";
 
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -39,6 +41,9 @@ export async function PUT(request: Request) {
   const updates: HubPreferencesUpdate = {};
   if (typeof body.hub_label === "string") updates.hub_label = body.hub_label.trim();
   if (typeof body.accent_color === "string") updates.accent_color = body.accent_color.trim();
+  if (typeof body.theme === "string" && (HUB_THEMES as string[]).includes(body.theme)) {
+    updates.theme = body.theme as HubTheme;
+  }
 
   if (updates.accent_color && !HEX_COLOR.test(updates.accent_color)) {
     return NextResponse.json(

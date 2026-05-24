@@ -92,7 +92,7 @@ export default function BrandKitsList({ initialKits }: { initialKits: BrandKit[]
         </div>
 
         {showForm && (
-          <form onSubmit={handleCreate} className="p-4 border border-border rounded-lg bg-white/40 mb-4 flex items-end gap-3">
+          <form onSubmit={handleCreate} className="p-4 border border-border rounded-lg bg-surface mb-4 flex items-end gap-3">
             <label className="flex-1">
               <span className="block text-sm mb-2">Client name</span>
               <input
@@ -141,7 +141,7 @@ function KitCard({
   onDelete?: (id: number) => void;
 }) {
   return (
-    <li className="p-5 border border-border rounded-lg bg-white/40 list-none">
+    <li className="p-5 border border-border rounded-lg bg-surface list-none">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3 mb-2 flex-wrap">

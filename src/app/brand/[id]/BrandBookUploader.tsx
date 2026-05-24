@@ -51,7 +51,7 @@ export default function BrandBookUploader({ kitId }: { kitId: number }) {
   }
 
   return (
-    <section className="p-5 border border-border rounded-lg bg-white/40">
+    <section className="p-5 border border-border rounded-lg bg-surface">
       <h2 className="text-sm font-medium uppercase tracking-wider text-muted mb-2">
         Brand book — PDF upload
       </h2>

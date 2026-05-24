@@ -9,10 +9,15 @@
 
 import { queryOne } from "./client";
 
+export type HubTheme = "light" | "dark";
+
+export const HUB_THEMES: HubTheme[] = ["light", "dark"];
+
 export type HubPreferences = {
   id: number;
   hub_label: string;
   accent_color: string;
+  theme: HubTheme;
   updated_at: Date;
 };
 

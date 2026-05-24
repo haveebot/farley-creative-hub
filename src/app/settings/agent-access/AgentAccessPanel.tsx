@@ -170,7 +170,7 @@ export default function AgentAccessPanel({
         <p className="text-sm text-muted leading-relaxed mb-2">
           Pass the token as a Bearer header on any Hub endpoint:
         </p>
-        <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
+        <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
 {`curl https://hub.farleycreative.com/api/brand-kits/studio \\
   -H "Authorization: Bearer fch_…your_token…"`}
         </pre>
@@ -188,11 +188,11 @@ export default function AgentAccessPanel({
           The Hub also speaks the Model Context Protocol — once added as a custom connector in Claude, the Hub appears as native tools (alongside Canva). Claude can read brand kits, update voice notes, list assets, etc. without curl.
         </p>
         <p className="text-sm text-muted mb-2">MCP server URL:</p>
-        <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
+        <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
 {`https://hub.farleycreative.com/api/mcp`}
         </pre>
         <p className="text-sm text-muted mt-3 mb-2">Auth header:</p>
-        <pre className="text-xs bg-white/40 border border-border rounded p-3 overflow-x-auto">
+        <pre className="text-xs bg-surface border border-border rounded p-3 overflow-x-auto">
 {`Authorization: Bearer fch_…your_token…`}
         </pre>
         <p className="text-xs text-muted mt-3">
@@ -217,7 +217,7 @@ function TokenRow({
     : "never";
 
   return (
-    <li className={`p-4 border border-border rounded-lg ${isRevoked ? "opacity-50" : "bg-white/40"}`}>
+    <li className={`p-4 border border-border rounded-lg ${isRevoked ? "opacity-50" : "bg-surface"}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="font-medium truncate">{token.name}</div>

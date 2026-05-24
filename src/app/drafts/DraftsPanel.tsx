@@ -171,7 +171,7 @@ export default function DraftsPanel({
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="p-6 border border-border rounded-lg bg-white/40 space-y-4">
+        <form onSubmit={handleCreate} className="p-6 border border-border rounded-lg bg-surface space-y-4">
           <Field label="Title" hint="A short label so you can find this draft later (not the output).">
             <input
               type="text"
@@ -279,7 +279,7 @@ function DraftRow({
   }
 
   return (
-    <li className="border border-border rounded-lg bg-white/40">
+    <li className="border border-border rounded-lg bg-surface">
       <div className="p-4 flex items-start justify-between gap-4">
         <button
           type="button"
@@ -288,10 +288,10 @@ function DraftRow({
         >
           <div className="flex items-center gap-3 mb-1 flex-wrap">
             <h3 className="font-medium truncate">{draft.title}</h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-white/60 text-muted">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-surface-strong text-muted">
               {KIND_LABELS[draft.kind as DraftKind] ?? draft.kind}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-white/60 text-muted">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-surface-strong text-muted">
               {STATUS_LABELS[draft.status as DraftStatus] ?? draft.status}
             </span>
           </div>
@@ -310,7 +310,7 @@ function DraftRow({
           {draft.prompt && (
             <details className="text-xs text-muted">
               <summary className="cursor-pointer hover:text-foreground">Show prompt</summary>
-              <pre className="mt-2 whitespace-pre-wrap font-sans bg-white/40 p-3 rounded border border-border">{draft.prompt}</pre>
+              <pre className="mt-2 whitespace-pre-wrap font-sans bg-surface p-3 rounded border border-border">{draft.prompt}</pre>
             </details>
           )}
 
@@ -343,7 +343,7 @@ function DraftRow({
               </div>
             </div>
           ) : (
-            <pre className="whitespace-pre-wrap font-sans text-sm bg-white/40 p-4 rounded border border-border">{draft.content}</pre>
+            <pre className="whitespace-pre-wrap font-sans text-sm bg-surface p-4 rounded border border-border">{draft.content}</pre>
           )}
 
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
@@ -355,14 +355,14 @@ function DraftRow({
                     setEditContent(draft.content);
                     setEditing(true);
                   }}
-                  className="px-3 py-1.5 text-sm border border-border rounded hover:bg-white/60 transition"
+                  className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-strong transition"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
                   onClick={() => navigator.clipboard.writeText(draft.content)}
-                  className="px-3 py-1.5 text-sm border border-border rounded hover:bg-white/60 transition"
+                  className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-strong transition"
                 >
                   Copy
                 </button>

@@ -106,7 +106,7 @@ export default function AssetsPanel({
       </div>
 
       {showForm && (
-        <form onSubmit={handleUpload} className="p-6 border border-border rounded-lg bg-white/40 space-y-4">
+        <form onSubmit={handleUpload} className="p-6 border border-border rounded-lg bg-surface space-y-4">
           <Field label="File" required>
             <input
               type="file"
@@ -200,8 +200,8 @@ export default function AssetsPanel({
           {assets.map((a) => {
             const brand = brandKits.find((k) => k.id === a.brand_kit_id);
             return (
-              <li key={a.id} className="p-4 border border-border rounded-lg bg-white/40">
-                <div className="aspect-video mb-3 bg-white/40 rounded overflow-hidden flex items-center justify-center text-3xl text-muted">
+              <li key={a.id} className="p-4 border border-border rounded-lg bg-surface">
+                <div className="aspect-video mb-3 bg-surface rounded overflow-hidden flex items-center justify-center text-3xl text-muted">
                   {a.mime_type.startsWith("image/") ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={a.url} alt={a.name} className="w-full h-full object-cover" />
