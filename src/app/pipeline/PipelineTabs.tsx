@@ -3,7 +3,11 @@
  * Server component; takes the current pathname to mark active tab.
  */
 
-export default function PipelineTabs({ active }: { active: "active" | "leads" }) {
+export default function PipelineTabs({
+  active,
+}: {
+  active: "active" | "leads" | "cadences";
+}) {
   return (
     <nav className="flex gap-4 mb-6 pb-3 border-b border-border text-sm">
       <a
@@ -25,6 +29,16 @@ export default function PipelineTabs({ active }: { active: "active" | "leads" })
         }
       >
         Leads
+      </a>
+      <a
+        href="/cadences"
+        className={
+          active === "cadences"
+            ? "font-medium underline"
+            : "text-muted hover:text-foreground transition"
+        }
+      >
+        Cadences
       </a>
     </nav>
   );
