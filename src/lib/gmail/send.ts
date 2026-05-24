@@ -9,8 +9,9 @@
  */
 
 import {
-  getActiveConnection,
+  getConnectionByPurpose,
   updateAccessToken,
+  type ConnectionPurpose,
   type WorkspaceConnection,
 } from "@/lib/db/workspace-connections";
 import { refreshAccessToken } from "./oauth";
@@ -33,17 +34,20 @@ export type GmailSendResult = {
 };
 
 /**
- * Get a usable access token for the active Workspace connection.
- * Refreshes if expired or within 60s of expiry.
+ * Get a usable access token for a Workspace connection of a given
+ * purpose. Defaults to 'sending' (the cadence-draft + send role).
+ * Refreshes the access token if expired or within 60s of expiry.
  */
-export async function getValidAccessToken(): Promise<{
+export async function getValidAccessToken(
+  purpose: ConnectionPurpose = "sending",
+): Promise<{
   accessToken: string;
   connection: WorkspaceConnection;
 }> {
-  const connection = await getActiveConnection();
+  const connection = await getConnectionByPurpose(purpose);
   if (!connection) {
     throw new Error(
-      "No Workspace connection. Connect at /settings/workspace first.",
+      `No Workspace connection for purpose '${purpose}'. Connect at /settings/workspace first.`,
     );
   }
 

@@ -31,7 +31,7 @@ import {
 } from "@/lib/gmail/read";
 import { createLead } from "@/lib/db/leads";
 import type { LeadSourceType } from "@/lib/leads-shared";
-import { getActiveConnection as getWorkspaceConnection } from "@/lib/db/workspace-connections";
+import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // seconds — multiple Claude calls per tick
@@ -55,12 +55,13 @@ export async function GET(request: Request) {
     }
   }
 
-  const connection = await getWorkspaceConnection();
+  const connection = await getConnectionByPurpose("reading_leads");
   if (!connection) {
     return NextResponse.json({
       ok: true,
-      skipped: "no-workspace-connection",
-      detail: "Connect Workspace at /settings/workspace to enable lead polling",
+      skipped: "no-reading-leads-connection",
+      detail:
+        "Connect a 'Lead source' Workspace account at /settings/workspace to enable lead polling. This is the mailbox where job alerts arrive (typically separate from the 'Sending identity' used for cadence drafts).",
     });
   }
 

@@ -7,6 +7,7 @@
  */
 
 import { getValidAccessToken } from "./send";
+import type { ConnectionPurpose } from "@/lib/db/workspace-connections";
 
 const GMAIL_MESSAGES_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
 
@@ -36,7 +37,10 @@ export async function listRecentExchange(
   contactEmail: string,
   limit = 10,
 ): Promise<GmailExchangeMessage[]> {
-  const { accessToken, connection } = await getValidAccessToken();
+  // Uses the 'sending' connection — exchange shown on prospect detail
+  // is the prospect's history with Collie's studio identity (the same
+  // mailbox sends originate from).
+  const { accessToken, connection } = await getValidAccessToken("sending");
   const meEmail = connection.email.toLowerCase();
   const contact = contactEmail.toLowerCase().trim();
   if (!contact) return [];
@@ -148,8 +152,11 @@ export type GmailLabel = {
 /**
  * Look up a label by name. Returns null if no label with that name exists.
  */
-export async function getLabelByName(name: string): Promise<GmailLabel | null> {
-  const { accessToken } = await getValidAccessToken();
+export async function getLabelByName(
+  name: string,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<GmailLabel | null> {
+  const { accessToken } = await getValidAccessToken(purpose);
   const res = await fetch(GMAIL_LABELS_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -164,8 +171,11 @@ export async function getLabelByName(name: string): Promise<GmailLabel | null> {
 /**
  * Create a label by name. Returns the new label.
  */
-export async function createLabel(name: string): Promise<GmailLabel> {
-  const { accessToken } = await getValidAccessToken();
+export async function createLabel(
+  name: string,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<GmailLabel> {
+  const { accessToken } = await getValidAccessToken(purpose);
   const res = await fetch(GMAIL_LABELS_URL, {
     method: "POST",
     headers: {
@@ -188,10 +198,13 @@ export async function createLabel(name: string): Promise<GmailLabel> {
 /**
  * Look up a label by name OR create it if it doesn't exist. Idempotent.
  */
-export async function ensureLabel(name: string): Promise<GmailLabel> {
-  const existing = await getLabelByName(name);
+export async function ensureLabel(
+  name: string,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<GmailLabel> {
+  const existing = await getLabelByName(name, purpose);
   if (existing) return existing;
-  return createLabel(name);
+  return createLabel(name, purpose);
 }
 
 // ============ Reading messages by label ============
@@ -216,8 +229,9 @@ export type GmailMessageSummary = {
 export async function listMessagesByLabel(
   labelId: string,
   limit = 20,
+  purpose: ConnectionPurpose = "reading_leads",
 ): Promise<GmailMessageSummary[]> {
-  const { accessToken } = await getValidAccessToken();
+  const { accessToken } = await getValidAccessToken(purpose);
 
   const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
   listUrl.searchParams.set("labelIds", labelId);
@@ -347,8 +361,12 @@ function stripHtml(html: string): string {
  * Remove a label from a message. Used to mark a message as "processed"
  * after the Hub has extracted leads from it.
  */
-export async function removeLabel(messageId: string, labelId: string): Promise<void> {
-  const { accessToken } = await getValidAccessToken();
+export async function removeLabel(
+  messageId: string,
+  labelId: string,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<void> {
+  const { accessToken } = await getValidAccessToken(purpose);
   const res = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
     {

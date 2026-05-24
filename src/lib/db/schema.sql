@@ -301,11 +301,15 @@ CREATE INDEX IF NOT EXISTS prospect_sends_scheduled_idx ON prospect_sends (sched
 CREATE INDEX IF NOT EXISTS prospect_sends_created_at_idx ON prospect_sends (created_at DESC);
 
 -- 2026-05-24: workspace_connections (Google Workspace OAuth tokens).
--- Single-user pattern for now (one connection = Collie's collie@farleycreative.com).
--- Cadence sends route through here instead of Resend so they land in her Sent folder.
+-- Multi-purpose: one row per (mailbox, purpose). Cadence sends + cadence
+-- drafts use the 'sending' connection (e.g., collie@farleycreative.com).
+-- Lead-poll uses the 'reading_leads' connection (e.g., the mailbox where
+-- job-board alerts arrive, like collie@palmfamilyventures.com). Different
+-- mailboxes for different roles keeps the studio identity clean (sends
+-- from Farley) while reading from where alerts naturally live.
 CREATE TABLE IF NOT EXISTS workspace_connections (
   id              SERIAL PRIMARY KEY,
-  email           TEXT NOT NULL,                     -- the connected account, e.g. collie@farleycreative.com
+  email           TEXT NOT NULL,                     -- the connected account
   refresh_token   TEXT NOT NULL,                     -- long-lived; used to mint access tokens
   access_token    TEXT,                              -- current short-lived (~1h) access token
   access_expires_at TIMESTAMPTZ,                     -- when access_token expires
@@ -317,6 +321,17 @@ CREATE TABLE IF NOT EXISTS workspace_connections (
 
 CREATE UNIQUE INDEX IF NOT EXISTS workspace_connections_email_idx ON workspace_connections (LOWER(email));
 CREATE INDEX IF NOT EXISTS workspace_connections_updated_at_idx ON workspace_connections (updated_at DESC);
+
+-- 2026-05-24 (PM): add purpose column for multi-role connections.
+-- 'sending' = mailbox where Hub creates Gmail drafts + sends; cadence-tick uses this.
+-- 'reading_leads' = mailbox where job alerts arrive; lead-poll uses this.
+-- A single mailbox can also serve both roles (separate rows with different purposes).
+ALTER TABLE workspace_connections ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'sending';
+
+-- Only one connection per purpose at a time. Trying to add a second
+-- 'sending' or 'reading_leads' connection replaces the existing one.
+CREATE UNIQUE INDEX IF NOT EXISTS workspace_connections_purpose_idx
+  ON workspace_connections (purpose);
 
 -- 2026-05-24: prospect_sends.send_via — track which channel each send used
 -- (gmail | resend). Defaults to 'gmail' for new sends after this migration.

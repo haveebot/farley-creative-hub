@@ -40,7 +40,7 @@ import {
   markSendDrafted,
 } from "@/lib/db/enrollments";
 import { createGmailDraft } from "@/lib/gmail/send";
-import { getActiveConnection as getWorkspaceConnection } from "@/lib/db/workspace-connections";
+import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
 import { getProspect, listContacts, logActivity } from "@/lib/db/prospects";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const workspaceConnection = await getWorkspaceConnection();
+  const workspaceConnection = await getConnectionByPurpose("sending");
 
   const due = await findDueEnrollments(50);
   const results: Array<{

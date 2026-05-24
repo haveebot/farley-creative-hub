@@ -12,7 +12,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireAuth, type AuthContext } from "@/lib/auth/require";
-import { upsertConnection } from "@/lib/db/workspace-connections";
+import {
+  CONNECTION_PURPOSES,
+  upsertConnection,
+  type ConnectionPurpose,
+} from "@/lib/db/workspace-connections";
 import { exchangeCode, fetchUserInfo } from "@/lib/gmail/oauth";
 
 export async function GET(request: Request) {
@@ -42,15 +46,17 @@ export async function GET(request: Request) {
       new URL("/settings/workspace?error=state-mismatch", url.origin),
     );
   }
+  const purposeCookie = cookieStore.get("workspace_oauth_purpose")?.value;
+  const purpose: ConnectionPurpose =
+    purposeCookie && (CONNECTION_PURPOSES as string[]).includes(purposeCookie)
+      ? (purposeCookie as ConnectionPurpose)
+      : "sending";
 
   const redirectUri = `${url.origin}/api/workspace/callback`;
 
   try {
     const tokens = await exchangeCode({ code, redirectUri });
     if (!tokens.refresh_token) {
-      // Google sometimes omits refresh_token if a prior grant exists.
-      // We force `prompt=consent` in the authorize URL to avoid this,
-      // but surface the issue if it happens.
       return NextResponse.redirect(
         new URL(
           "/settings/workspace?error=no-refresh-token",
@@ -68,6 +74,7 @@ export async function GET(request: Request) {
       expires_in: tokens.expires_in,
       scopes: tokens.scope.split(" "),
       connected_by: connectedByLabel(auth),
+      purpose,
     });
   } catch (err) {
     console.error("[workspace/callback] exchange failed", err);
@@ -80,7 +87,10 @@ export async function GET(request: Request) {
   }
 
   cookieStore.delete("workspace_oauth_state");
-  return NextResponse.redirect(new URL("/settings/workspace?connected=1", url.origin));
+  cookieStore.delete("workspace_oauth_purpose");
+  return NextResponse.redirect(
+    new URL(`/settings/workspace?connected=${purpose}`, url.origin),
+  );
 }
 
 function connectedByLabel(auth: AuthContext): string {
