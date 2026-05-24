@@ -99,3 +99,52 @@ CREATE TABLE IF NOT EXISTS drafts (
 CREATE INDEX IF NOT EXISTS drafts_status_idx ON drafts (status);
 CREATE INDEX IF NOT EXISTS drafts_kind_idx ON drafts (kind);
 CREATE INDEX IF NOT EXISTS drafts_created_at_idx ON drafts (created_at DESC);
+
+-- Phase 1: sales pipeline (prospects, contacts, activity)
+CREATE TABLE IF NOT EXISTS prospects (
+  id                SERIAL PRIMARY KEY,
+  business_name     TEXT NOT NULL,
+  industry          TEXT,
+  size              TEXT,                                  -- solo | small | medium | larger
+  city              TEXT,
+  state             TEXT,                                  -- 2-letter
+  website_url       TEXT,
+  status            TEXT NOT NULL DEFAULT 'lead',          -- lead | contacted | discovery | proposal | negotiating | signed | passed | dormant
+  service_interest  TEXT[] NOT NULL DEFAULT '{}',          -- brand_identity | web_design | marketing | etc.
+  notes             TEXT NOT NULL DEFAULT '',
+  next_action       TEXT,
+  next_action_date  DATE,
+  source            TEXT,                                  -- referral | cold_outreach | inbound | event | repeat_client | other
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prospect_contacts (
+  id            SERIAL PRIMARY KEY,
+  prospect_id   INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  email         TEXT,
+  phone         TEXT,
+  role          TEXT,                                       -- owner | marketing_lead | designer | decision_maker | other
+  is_primary    BOOLEAN NOT NULL DEFAULT FALSE,
+  notes         TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prospect_activity (
+  id            SERIAL PRIMARY KEY,
+  prospect_id   INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL,                              -- email_sent | call | meeting | proposal_sent | note | status_change
+  content       TEXT NOT NULL DEFAULT '',
+  draft_id      INTEGER REFERENCES drafts(id) ON DELETE SET NULL,
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS prospects_status_idx ON prospects (status);
+CREATE INDEX IF NOT EXISTS prospects_state_idx ON prospects (state);
+CREATE INDEX IF NOT EXISTS prospects_industry_idx ON prospects (industry);
+CREATE INDEX IF NOT EXISTS prospects_next_action_date_idx ON prospects (next_action_date);
+CREATE INDEX IF NOT EXISTS prospect_contacts_prospect_idx ON prospect_contacts (prospect_id);
+CREATE INDEX IF NOT EXISTS prospect_activity_prospect_idx ON prospect_activity (prospect_id);
+CREATE INDEX IF NOT EXISTS prospect_activity_created_at_idx ON prospect_activity (created_at DESC);

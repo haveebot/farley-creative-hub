@@ -39,6 +39,34 @@ import {
   type DraftStatus,
 } from "@/lib/db/drafts";
 import { draftWithClaude } from "@/lib/ai/claude";
+import {
+  createContact,
+  createProspect,
+  getProspect,
+  listActivity,
+  listContacts,
+  listProspects,
+  logActivity,
+  updateProspect,
+  type ActivityKind,
+  type ContactRole,
+  type ProspectIndustry,
+  type ProspectSize,
+  type ProspectStatus,
+  type ServiceInterest,
+} from "@/lib/db/prospects";
+import {
+  CONTACT_ROLES,
+  PROSPECT_INDUSTRIES,
+  PROSPECT_SIZES,
+  PROSPECT_SOURCES,
+  PROSPECT_STATUSES,
+  SERVICE_INTERESTS,
+} from "@/lib/pipeline-shared";
+
+const ACTIVITY_KINDS: ActivityKind[] = [
+  "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
+];
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "farley-creative-hub";
@@ -340,6 +368,173 @@ const TOOLS: ToolDef[] = [
         }
       }
       return createClientKit(input as never);
+    },
+  },
+  {
+    name: "list_prospects",
+    description:
+      "List sales-pipeline prospects with optional filters. Use to see what's in the pipeline, what's due, who to follow up with. Filters: status (lead/contacted/discovery/proposal/negotiating/signed/passed/dormant), state (2-letter code), industry, size (solo/small/medium/larger), service (brand_identity/web_design/marketing/etc).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: PROSPECT_STATUSES as unknown as string[] },
+        state: { type: "string", description: "2-letter US state code" },
+        industry: { type: "string", enum: PROSPECT_INDUSTRIES as unknown as string[] },
+        size: { type: "string", enum: PROSPECT_SIZES as unknown as string[] },
+        service: { type: "string", enum: SERVICE_INTERESTS as unknown as string[] },
+      },
+    },
+    handler: async (args) => {
+      const filter: {
+        status?: ProspectStatus; state?: string; industry?: ProspectIndustry;
+        size?: ProspectSize; service?: ServiceInterest;
+      } = {};
+      if (typeof args.status === "string") filter.status = args.status as ProspectStatus;
+      if (typeof args.state === "string") filter.state = args.state.toUpperCase();
+      if (typeof args.industry === "string") filter.industry = args.industry as ProspectIndustry;
+      if (typeof args.size === "string") filter.size = args.size as ProspectSize;
+      if (typeof args.service === "string") filter.service = args.service as ServiceInterest;
+      return listProspects(filter);
+    },
+  },
+  {
+    name: "get_prospect",
+    description: "Get a prospect by id, including the full record (status, industry, services, next action, notes, etc.).",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "integer" } },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      const p = await getProspect(id);
+      if (!p) throw new Error(`prospect ${id} not found`);
+      const [contacts, activity] = await Promise.all([listContacts(id), listActivity(id)]);
+      return { prospect: p, contacts, activity };
+    },
+  },
+  {
+    name: "create_prospect",
+    description:
+      "Create a new prospect in the pipeline. Just business_name is required — fill in the rest as you learn it. Returns the new prospect with its id.",
+    inputSchema: {
+      type: "object",
+      required: ["business_name"],
+      properties: {
+        business_name: { type: "string" },
+        industry: { type: "string", enum: PROSPECT_INDUSTRIES as unknown as string[] },
+        size: { type: "string", enum: PROSPECT_SIZES as unknown as string[] },
+        city: { type: "string" },
+        state: { type: "string", description: "2-letter US state code" },
+        website_url: { type: "string" },
+        status: { type: "string", enum: PROSPECT_STATUSES as unknown as string[] },
+        service_interest: { type: "array", items: { type: "string", enum: SERVICE_INTERESTS as unknown as string[] } },
+        notes: { type: "string" },
+        next_action: { type: "string" },
+        next_action_date: { type: "string", description: "YYYY-MM-DD" },
+        source: { type: "string", enum: PROSPECT_SOURCES as unknown as string[] },
+      },
+    },
+    handler: async (args) => {
+      const business_name = typeof args.business_name === "string" ? args.business_name.trim() : "";
+      if (!business_name) throw new Error("business_name required");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return createProspect({ ...args, business_name } as any);
+    },
+  },
+  {
+    name: "update_prospect",
+    description:
+      "Update a prospect. Pass id + any fields to change. Use to advance status, set next_action, add notes, etc.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "integer" },
+        business_name: { type: "string" },
+        industry: { type: "string", enum: PROSPECT_INDUSTRIES as unknown as string[] },
+        size: { type: "string", enum: PROSPECT_SIZES as unknown as string[] },
+        city: { type: "string" },
+        state: { type: "string" },
+        website_url: { type: "string" },
+        status: { type: "string", enum: PROSPECT_STATUSES as unknown as string[] },
+        service_interest: { type: "array", items: { type: "string", enum: SERVICE_INTERESTS as unknown as string[] } },
+        notes: { type: "string" },
+        next_action: { type: "string" },
+        next_action_date: { type: "string" },
+        source: { type: "string", enum: PROSPECT_SOURCES as unknown as string[] },
+      },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      const { id: _id, ...updates } = args;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return updateProspect(id, updates as any);
+    },
+  },
+  {
+    name: "add_prospect_contact",
+    description:
+      "Add a contact to a prospect (e.g. the owner, marketing lead, decision-maker). is_primary=true marks them as the primary contact and demotes any other primary.",
+    inputSchema: {
+      type: "object",
+      required: ["prospect_id", "name"],
+      properties: {
+        prospect_id: { type: "integer" },
+        name: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        role: { type: "string", enum: CONTACT_ROLES as unknown as string[] },
+        is_primary: { type: "boolean" },
+        notes: { type: "string" },
+      },
+    },
+    handler: async (args) => {
+      const prospect_id = args.prospect_id;
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (typeof prospect_id !== "number") throw new Error("prospect_id required");
+      if (!name) throw new Error("name required");
+      return createContact({
+        prospect_id,
+        name,
+        email: typeof args.email === "string" ? args.email : null,
+        phone: typeof args.phone === "string" ? args.phone : null,
+        role: typeof args.role === "string" ? (args.role as ContactRole) : null,
+        is_primary: args.is_primary === true,
+        notes: typeof args.notes === "string" ? args.notes : "",
+      });
+    },
+  },
+  {
+    name: "log_prospect_activity",
+    description:
+      "Log activity on a prospect — email sent, call, meeting, proposal sent, or a free-form note. Use after any real outreach so the timeline stays current.",
+    inputSchema: {
+      type: "object",
+      required: ["prospect_id", "kind"],
+      properties: {
+        prospect_id: { type: "integer" },
+        kind: { type: "string", enum: ACTIVITY_KINDS as unknown as string[] },
+        content: { type: "string", description: "What happened, in your own words." },
+        draft_id: { type: "integer", description: "If the activity references an existing draft, pass its id." },
+      },
+    },
+    handler: async (args, ctx) => {
+      const prospect_id = args.prospect_id;
+      const kind = args.kind;
+      if (typeof prospect_id !== "number") throw new Error("prospect_id required");
+      if (typeof kind !== "string" || !(ACTIVITY_KINDS as string[]).includes(kind)) {
+        throw new Error("kind required + must be one of: " + ACTIVITY_KINDS.join(", "));
+      }
+      return logActivity({
+        prospect_id,
+        kind: kind as ActivityKind,
+        content: typeof args.content === "string" ? args.content : "",
+        draft_id: typeof args.draft_id === "number" ? args.draft_id : null,
+        created_by: `agent:${ctx.agentName}`,
+      });
     },
   },
 ];
