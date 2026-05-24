@@ -24,6 +24,15 @@ import { verifyAgentToken } from "@/lib/db/agent-tokens";
 import { getHubPreferences, updateHubPreferences } from "@/lib/db/hub-preferences";
 import { getStudioKit, updateBrandKit } from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
+import {
+  createDraft,
+  DRAFT_KINDS,
+  DRAFT_STATUSES,
+  listDrafts,
+  type DraftKind,
+  type DraftStatus,
+} from "@/lib/db/drafts";
+import { draftWithClaude } from "@/lib/ai/claude";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "farley-creative-hub";
@@ -31,11 +40,13 @@ const SERVER_VERSION = "0.1.0";
 
 const HEX_COLOR_OR_EMPTY = /^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$/;
 
+type ToolContext = { agentId: number; agentName: string };
+
 type ToolDef = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
+  handler: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 };
 
 const TOOLS: ToolDef[] = [
@@ -146,6 +157,89 @@ const TOOLS: ToolDef[] = [
       return listAssets(filter as never);
     },
   },
+  {
+    name: "list_drafts",
+    description:
+      "List drafts already in the Hub — Etsy listing copy, Pinterest pin captions, customer replies, social posts, blog drafts, email drafts. Optionally filter by status (draft/approved/published/archived) or kind. Use this before creating a new draft to avoid duplicates and to find drafts to refine.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: DRAFT_STATUSES as unknown as string[] },
+        kind: { type: "string", enum: DRAFT_KINDS as unknown as string[] },
+      },
+    },
+    handler: async (args) => {
+      const filter: { status?: DraftStatus; kind?: DraftKind } = {};
+      if (typeof args.status === "string") filter.status = args.status as DraftStatus;
+      if (typeof args.kind === "string") filter.kind = args.kind as DraftKind;
+      return listDrafts(filter);
+    },
+  },
+  {
+    name: "create_draft",
+    description:
+      "Create a draft in the Hub. Two modes: (1) pass a prompt and Claude drafts content grounded in the studio brand voice + brand book notes; (2) pass content directly to save text you've already drafted in the conversation. Provide a short title so it's findable later. Pick the correct kind so the draft formats appropriately. Drafts start in status 'draft' for review.",
+    inputSchema: {
+      type: "object",
+      required: ["title", "kind"],
+      properties: {
+        title: {
+          type: "string",
+          description: "Short label for finding this draft later (not the output content).",
+        },
+        kind: {
+          type: "string",
+          enum: DRAFT_KINDS as unknown as string[],
+          description:
+            "What kind of draft: listing (Etsy), pin (Pinterest), customer_reply, social_post, blog, email, general.",
+        },
+        prompt: {
+          type: "string",
+          description:
+            "What to draft (used if `content` is not provided). Claude will draft using the studio brand voice + brand book notes.",
+        },
+        content: {
+          type: "string",
+          description:
+            "Pre-drafted content to save directly. If provided, skips the Claude call. Useful when you've already drafted in your conversation.",
+        },
+      },
+    },
+    handler: async (args, ctx) => {
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      const kindRaw = typeof args.kind === "string" ? args.kind : "general";
+      const kind: DraftKind = (DRAFT_KINDS as string[]).includes(kindRaw)
+        ? (kindRaw as DraftKind)
+        : "general";
+      const prompt = typeof args.prompt === "string" ? args.prompt : "";
+      const providedContent = typeof args.content === "string" ? args.content : null;
+
+      if (!title) throw new Error("title is required");
+
+      let content: string;
+      let modelUsed: string | null = null;
+      if (providedContent !== null) {
+        content = providedContent;
+      } else {
+        if (!prompt) throw new Error("either prompt or content must be provided");
+        const brand = await getStudioKit();
+        const result = await draftWithClaude({ kind, prompt, brand });
+        content = result.content;
+        modelUsed = result.model;
+      }
+
+      const studio = await getStudioKit();
+      return createDraft({
+        title,
+        kind,
+        prompt,
+        content,
+        brand_kit_id: studio.id,
+        model_used: modelUsed,
+        created_by: `agent:${ctx.agentName}`,
+      });
+    },
+  },
 ];
 
 /**
@@ -233,7 +327,10 @@ export async function POST(request: Request) {
           return jsonRpcError(id, -32601, `tool not found: ${name}`);
         }
         try {
-          const result = await tool.handler(args);
+          const result = await tool.handler(args, {
+            agentId: authResult.tokenId,
+            agentName: authResult.tokenName,
+          });
           return jsonRpcResult(id, {
             content: [
               {

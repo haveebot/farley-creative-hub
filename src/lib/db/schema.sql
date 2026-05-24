@@ -76,3 +76,22 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE INDEX IF NOT EXISTS assets_kind_idx ON assets (kind);
 CREATE INDEX IF NOT EXISTS assets_brand_kit_idx ON assets (brand_kit_id);
 CREATE INDEX IF NOT EXISTS assets_created_at_idx ON assets (created_at DESC);
+
+-- Phase 1: drafts (AI-drafted content — listings, pins, replies, etc.)
+CREATE TABLE IF NOT EXISTS drafts (
+  id            SERIAL PRIMARY KEY,
+  title         TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'general',
+  status        TEXT NOT NULL DEFAULT 'draft',
+  prompt        TEXT NOT NULL DEFAULT '',
+  content       TEXT NOT NULL DEFAULT '',
+  brand_kit_id  INTEGER REFERENCES brand_kits(id) ON DELETE SET NULL,
+  model_used    TEXT,
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS drafts_status_idx ON drafts (status);
+CREATE INDEX IF NOT EXISTS drafts_kind_idx ON drafts (kind);
+CREATE INDEX IF NOT EXISTS drafts_created_at_idx ON drafts (created_at DESC);
