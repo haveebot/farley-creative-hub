@@ -25,6 +25,7 @@ export default async function SettingsPage() {
           <nav className="flex gap-4 mb-8 pb-4 border-b border-border text-sm">
             <a href="/settings" className="font-medium underline">Hub look &amp; feel</a>
             <a href="/settings/agent-access" className="text-muted hover:text-foreground transition">Agent access</a>
+            <a href="/settings/etsy" className="text-muted hover:text-foreground transition">Etsy</a>
           </nav>
 
           <HubSettingsForm initial={prefs} />

@@ -25,6 +25,7 @@ export default async function AgentAccessPage() {
           <nav className="flex gap-4 mb-8 pb-4 border-b border-border text-sm">
             <a href="/settings" className="text-muted hover:text-foreground transition">Hub look &amp; feel</a>
             <a href="/settings/agent-access" className="font-medium underline">Agent access</a>
+            <a href="/settings/etsy" className="text-muted hover:text-foreground transition">Etsy</a>
           </nav>
 
           <AgentAccessPanel initialTokens={tokens} />
