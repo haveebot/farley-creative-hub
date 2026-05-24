@@ -90,7 +90,16 @@ The earliest organic end-to-end validation: enroll a real prospect (not a test) 
 Gmail API watch on `collie@farleycreative.com` → Hub detects replies → auto-pauses matching enrollment so we don't keep cadencing someone who replied. Requires Workspace OAuth setup; ~1 session of work.
 
 ### 4. MCP tools for cadences
-The MCP server (`/api/mcp`) currently exposes ~19 tools but none of the cadence/enrollment surface. Adding `list_cadences`, `create_cadence`, `create_cadence_step`, `enroll_prospect`, `list_enrollments`, etc. would let agent integrations drive cadences too. Mechanical; ~30 min.
+~~The MCP server (`/api/mcp`) currently exposes ~19 tools but none of the cadence/enrollment surface.~~ **DONE — commit `3345682`.** 12 cadence + enrollment MCP tools shipped: `list_cadences`, `get_cadence`, `create_cadence`, `add_cadence_step`, `list_enrollments`, `get_enrollment`, `list_enrollments_for_prospect`, `enroll_prospect`, `pause_enrollment`, `resume_enrollment`, `cancel_enrollment`, `list_drafted_sends`. Total MCP surface now 32 tools.
+
+### 4b. OAuth 2.1 + Dynamic Client Registration for MCP (queued from Collie)
+Per Collie's technical proposal 2026-05-24 PM (haveebot uid 453): the polished MCP setup is OAuth 2.1 + RFC 7591 DCR so claude.ai's "Add custom connector" UI auto-discovers Hub auth metadata and runs an interactive consent flow — no manual token paste. Currently `/.well-known/oauth-authorization-server` returns 404; the bearer-token-in-config path works fine for 1-2 user systems but is non-canonical. Right time to build it: when a second tenant comes online OR claude.ai's UI flow becomes primary. Estimated 2-4 hour build:
+- `/.well-known/oauth-authorization-server` metadata endpoint
+- RFC 7591 Dynamic Client Registration endpoint
+- OAuth 2.1 authorize endpoint + consent UI
+- Token endpoint
+- `oauth_clients` table
+- MCP route accepts either bearer (existing) or OAuth 2.1 tokens (new)
 
 ### 5. Workspace-side DKIM for Collie's manual Gmail sends
 If Collie's manual sends from her Gmail start landing in spam folders, add Google's DKIM record at `google._domainkey.farleycreative.com`. 5-min fix. Not a problem until it is.
