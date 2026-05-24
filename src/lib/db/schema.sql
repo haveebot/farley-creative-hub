@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS brand_kits (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Only one studio-self kit per database.
 CREATE UNIQUE INDEX IF NOT EXISTS brand_kits_studio_self_idx
   ON brand_kits (is_studio_self) WHERE is_studio_self = TRUE;
+
+-- Phase 1: agent_tokens (programmatic API access)
+-- Token plaintext is SHA-256 hashed at rest. Only the prefix is stored
+-- plaintext for display ("which token is this?"). Full token shown once
+-- at creation; never recoverable after.
+CREATE TABLE IF NOT EXISTS agent_tokens (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  token_hash    TEXT NOT NULL UNIQUE,
+  token_prefix  TEXT NOT NULL,
+  last_used_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS agent_tokens_active_idx
+  ON agent_tokens (token_hash) WHERE revoked_at IS NULL;

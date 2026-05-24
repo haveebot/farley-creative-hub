@@ -21,6 +21,12 @@ export default async function SettingsPage() {
               How this dashboard presents itself to you. Just operator chrome — not customer-facing. Your studio's actual brand lives under <a href="/brand" className="underline">Brand</a>.
             </p>
           </header>
+
+          <nav className="flex gap-4 mb-8 pb-4 border-b border-border text-sm">
+            <a href="/settings" className="font-medium underline">Hub look &amp; feel</a>
+            <a href="/settings/agent-access" className="text-muted hover:text-foreground transition">Agent access</a>
+          </nav>
+
           <HubSettingsForm initial={prefs} />
         </div>
       </main>

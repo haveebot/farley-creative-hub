@@ -1,27 +1,40 @@
 /**
- * Middleware — gate every route behind a valid session cookie except:
- *   - /login + /signup (the auth surfaces themselves)
- *   - /api/auth/* (login, signup, logout)
- *   - Next.js internals (/_next, /favicon.ico, etc.)
+ * Middleware — gates page routes behind a valid session cookie.
  *
- * Session validation here is HMAC-only (no DB), so it runs in the edge
- * runtime without dependencies. Imports session-tokens.ts (not
- * session.ts) to avoid pulling in server-only `next/headers` cookie
- * APIs.
+ * API routes are NOT gated here — they call `requireAuth()` themselves
+ * so they can accept either cookie OR bearer-token (agent) auth. If we
+ * redirected unauthenticated API calls to /login (the page route flow),
+ * agents would get HTML instead of a clean 401 JSON response.
+ *
+ * Public page routes: /login, /signup
+ * Public API root: /api/auth/* (login, signup, logout)
+ * All other /api/*: pass through; route handlers enforce auth
+ * All other pages: must have a valid session cookie
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionValue } from "@/lib/auth/session-tokens";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/api/auth"];
+const PUBLIC_PAGE_PATHS = ["/login", "/signup"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  // All /api/* routes self-enforce via requireAuth().
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
+  // Public page routes.
+  if (
+    PUBLIC_PAGE_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    )
+  ) {
+    return NextResponse.next();
+  }
+
+  // Everything else: require session cookie.
   const cookie = request.cookies.get(SESSION_COOKIE)?.value;
   const email = cookie ? await verifySessionValue(cookie) : null;
 

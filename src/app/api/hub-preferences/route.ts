@@ -4,20 +4,31 @@
  *   GET /api/hub-preferences   — return Hub theme
  *   PUT /api/hub-preferences   — update Hub theme
  *
- * Middleware gates this behind a valid session.
+ * Auth: cookie (UI) or Bearer agent token. Either grants full access
+ * for now; per-token scoping is a Phase 2+ concern.
  */
 
 import { NextResponse } from "next/server";
-import { getHubPreferences, updateHubPreferences, type HubPreferencesUpdate } from "@/lib/db/hub-preferences";
+import { requireAuth } from "@/lib/auth/require";
+import {
+  getHubPreferences,
+  updateHubPreferences,
+  type HubPreferencesUpdate,
+} from "@/lib/db/hub-preferences";
 
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export async function GET() {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
   const prefs = await getHubPreferences();
   return NextResponse.json({ prefs });
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();

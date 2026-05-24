@@ -4,11 +4,17 @@
  *   GET /api/brand-kits/studio   — return Farley Girls Creative's kit
  *   PUT /api/brand-kits/studio   — update the studio kit
  *
+ * Auth: cookie (UI) or Bearer agent token.
  * (Client kits will live at /api/brand-kits/[id] when Phase 2 lands.)
  */
 
 import { NextResponse } from "next/server";
-import { getStudioKit, updateBrandKit, type BrandKitUpdate } from "@/lib/db/brand-kits";
+import { requireAuth } from "@/lib/auth/require";
+import {
+  getStudioKit,
+  updateBrandKit,
+  type BrandKitUpdate,
+} from "@/lib/db/brand-kits";
 
 const HEX_COLOR_OR_EMPTY = /^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$/;
 
@@ -33,11 +39,16 @@ const COLOR_FIELDS: Array<keyof BrandKitUpdate> = [
 ];
 
 export async function GET() {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
   const kit = await getStudioKit();
   return NextResponse.json({ kit });
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -53,7 +64,6 @@ export async function PUT(request: Request) {
     }
   }
 
-  // Validate color fields (empty allowed; hex required if present).
   for (const f of COLOR_FIELDS) {
     const v = updates[f];
     if (typeof v === "string" && !HEX_COLOR_OR_EMPTY.test(v)) {
