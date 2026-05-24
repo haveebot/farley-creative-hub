@@ -268,6 +268,27 @@ export async function listRecentSends(limit = 50): Promise<ProspectSend[]> {
   );
 }
 
+/**
+ * Returns drafted prospect_sends joined with the prospect's business name,
+ * for the Hub home "drafts awaiting review" surface.
+ */
+export type DraftedSendWithProspect = ProspectSend & {
+  prospect_business_name: string;
+};
+
+export async function listDraftedSends(limit = 20): Promise<DraftedSendWithProspect[]> {
+  return query<DraftedSendWithProspect>(
+    `SELECT ps.*, p.business_name AS prospect_business_name
+       FROM prospect_sends ps
+       JOIN prospect_enrollments pe ON pe.id = ps.enrollment_id
+       JOIN prospects p ON p.id = pe.prospect_id
+      WHERE ps.status = 'drafted'
+      ORDER BY ps.created_at DESC
+      LIMIT $1`,
+    [limit],
+  );
+}
+
 export async function createSend(input: SendCreate): Promise<ProspectSend> {
   const row = await queryOne<ProspectSend>(
     `INSERT INTO prospect_sends

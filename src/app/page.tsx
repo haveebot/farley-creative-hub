@@ -2,6 +2,7 @@ import { getCurrentOperatorEmail } from "@/lib/auth/session";
 import { listBrandKits } from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
 import { listDrafts } from "@/lib/db/drafts";
+import { listDraftedSends } from "@/lib/db/enrollments";
 import { listProspects } from "@/lib/db/prospects";
 import { listRecentActivity } from "@/lib/db/activity-feed";
 import { KIND_LABELS } from "@/lib/drafts-shared";
@@ -11,14 +12,16 @@ import TopNav from "./TopNav";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [email, kits, assets, allDrafts, allProspects, activity] = await Promise.all([
-    getCurrentOperatorEmail(),
-    listBrandKits(),
-    listAssets(),
-    listDrafts(),
-    listProspects(),
-    listRecentActivity(15),
-  ]);
+  const [email, kits, assets, allDrafts, allProspects, activity, draftedSends] =
+    await Promise.all([
+      getCurrentOperatorEmail(),
+      listBrandKits(),
+      listAssets(),
+      listDrafts(),
+      listProspects(),
+      listRecentActivity(15),
+      listDraftedSends(20),
+    ]);
 
   const studio = kits.find((k) => k.is_studio_self);
   const clientKitCount = kits.filter((k) => !k.is_studio_self).length;
@@ -42,7 +45,8 @@ export default async function Home() {
   const todayDrafts = allDrafts.filter((d) => new Date(d.created_at) > dayAgo);
   const todayAssets = assets.filter((a) => new Date(a.created_at) > dayAgo);
 
-  const awaitingCount = draftStatus.length + overdueProspects.length;
+  const awaitingCount =
+    draftStatus.length + overdueProspects.length + draftedSends.length;
 
   return (
     <>
@@ -67,10 +71,37 @@ export default async function Home() {
             </div>
             {awaitingCount === 0 ? (
               <p className="text-sm text-muted">
-                Nothing waiting. Open drafts and overdue prospect actions land here.
+                Nothing waiting. Cadence drafts, open drafts, and overdue prospect actions land here.
               </p>
             ) : (
               <div className="space-y-4 text-sm">
+                {draftedSends.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-muted mb-1 flex items-center gap-2">
+                      <span>Cadence drafts</span>
+                      <a
+                        href="https://mail.google.com/mail/u/0/#drafts"
+                        target="_blank"
+                        rel="noopener"
+                        className="text-[10px] underline hover:text-foreground"
+                      >
+                        review in Gmail →
+                      </a>
+                    </p>
+                    <ul className="space-y-1">
+                      {draftedSends.slice(0, 3).map((s) => (
+                        <li key={s.id} className="truncate">
+                          <span className="text-xs text-accent">●</span>{" "}
+                          <span className="text-xs text-muted">{s.prospect_business_name} ·</span>{" "}
+                          {s.subject}
+                        </li>
+                      ))}
+                      {draftedSends.length > 3 && (
+                        <li className="text-xs text-muted">+ {draftedSends.length - 3} more →</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
                 {overdueProspects.length > 0 && (
                   <div>
                     <p className="text-xs uppercase tracking-wider text-muted mb-1">
