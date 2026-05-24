@@ -3,6 +3,7 @@ import { listBrandKits } from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
 import { listDrafts } from "@/lib/db/drafts";
 import { listProspects } from "@/lib/db/prospects";
+import { listRecentActivity } from "@/lib/db/activity-feed";
 import { KIND_LABELS } from "@/lib/drafts-shared";
 import Greeting from "./Greeting";
 import TopNav from "./TopNav";
@@ -10,12 +11,13 @@ import TopNav from "./TopNav";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [email, kits, assets, allDrafts, allProspects] = await Promise.all([
+  const [email, kits, assets, allDrafts, allProspects, activity] = await Promise.all([
     getCurrentOperatorEmail(),
     listBrandKits(),
     listAssets(),
     listDrafts(),
     listProspects(),
+    listRecentActivity(15),
   ]);
 
   const studio = kits.find((k) => k.is_studio_self);
@@ -158,6 +160,11 @@ export default async function Home() {
                 </a>
               </li>
               <li>
+                <a href="/pipeline/leads/new" className="hover:text-foreground transition">
+                  → Capture a lead
+                </a>
+              </li>
+              <li>
                 <a href="/pipeline/new" className="hover:text-foreground transition">
                   → Add a prospect
                 </a>
@@ -175,6 +182,28 @@ export default async function Home() {
             </ul>
           </div>
         </section>
+
+        {/* Recent activity feed */}
+        {activity.length > 0 && (
+          <section className="max-w-5xl mx-auto mt-10">
+            <h2 className="text-sm font-medium uppercase tracking-wider text-muted mb-3">
+              Recent activity
+            </h2>
+            <ul className="border border-border rounded-lg bg-surface divide-y divide-border">
+              {activity.map((e) => (
+                <li key={e.id} className="px-5 py-3 text-sm">
+                  {e.href ? (
+                    <a href={e.href} className="block hover:opacity-90 transition">
+                      <ActivityRow event={e} />
+                    </a>
+                  ) : (
+                    <ActivityRow event={e} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Recent assets strip */}
         {recentAssets.length > 0 && (
@@ -218,4 +247,45 @@ export default async function Home() {
       </main>
     </>
   );
+}
+
+function ActivityRow({
+  event,
+}: {
+  event: {
+    title: string;
+    subtitle: string | null;
+    at: Date;
+    actor: string;
+  };
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="truncate">{event.title}</p>
+        {event.subtitle && (
+          <p className="text-xs text-muted truncate">{event.subtitle}</p>
+        )}
+      </div>
+      <p className="text-xs text-muted shrink-0">
+        {formatRelative(event.at)}
+        {event.actor && event.actor !== "you" && (
+          <> · {event.actor}</>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function formatRelative(d: Date | string): string {
+  const date = new Date(d);
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}d ago`;
+  return date.toLocaleDateString();
 }
