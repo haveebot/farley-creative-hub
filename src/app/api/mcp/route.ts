@@ -71,6 +71,7 @@ import {
   type LeadStatus,
 } from "@/lib/db/leads";
 import { LEAD_SOURCE_TYPES, LEAD_STATUSES } from "@/lib/leads-shared";
+import { fetchUrlToText, parseLead } from "@/lib/ai/parse-lead";
 import { query } from "@/lib/db/client";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
@@ -595,6 +596,29 @@ const TOOLS: ToolDef[] = [
       const source_type = (args.source_type as LeadSourceType) ?? "other";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return createLead({ ...args, source_type, found_by: `agent:${ctx.agentName}` } as any);
+    },
+  },
+  {
+    name: "parse_lead_source",
+    description:
+      "Parse a raw job posting / article / RFP / social post into structured lead fields using Claude. Returns business_name, source_title, city, state, industry, size, service_signal, summary. Does NOT save — pass the parsed fields to create_lead to actually capture. Pass either `text` (paste the body) or `url` (server fetches; may fail on Indeed/LinkedIn which block server fetches).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Raw posting/article/RFP body to parse." },
+        url: { type: "string", description: "Source URL — server tries to fetch + extract text." },
+      },
+    },
+    handler: async (args) => {
+      const url = typeof args.url === "string" ? args.url.trim() : "";
+      let text = typeof args.text === "string" ? args.text.trim() : "";
+      if (!text && url) {
+        text = await fetchUrlToText(url);
+      }
+      if (!text) {
+        throw new Error("Pass either `text` (raw body) or `url` (server will fetch).");
+      }
+      return parseLead(text);
     },
   },
   {

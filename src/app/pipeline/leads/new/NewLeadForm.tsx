@@ -21,6 +21,7 @@ import {
 } from "@/lib/pipeline-shared";
 
 type Status = "idle" | "saving" | "error";
+type ParseStatus = "idle" | "parsing" | "parsed" | "error";
 
 export default function NewLeadForm() {
   const router = useRouter();
@@ -38,11 +39,76 @@ export default function NewLeadForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Parse-with-Claude panel state
+  const [parsePane, setParsePane] = useState<"text" | "url">("text");
+  const [parseUrl, setParseUrl] = useState("");
+  const [parseText, setParseText] = useState("");
+  const [parseStatus, setParseStatus] = useState<ParseStatus>("idle");
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [parseSummary, setParseSummary] = useState<string | null>(null);
+
   function toggleService(s: ServiceInterest) {
     const next = new Set(services);
     if (next.has(s)) next.delete(s);
     else next.add(s);
     setServices(next);
+  }
+
+  async function handleParse() {
+    if (parsePane === "url" && !parseUrl.trim()) return;
+    if (parsePane === "text" && !parseText.trim()) return;
+    setParseStatus("parsing");
+    setParseError(null);
+    setParseSummary(null);
+
+    try {
+      const res = await fetch("/api/leads/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          parsePane === "url"
+            ? { url: parseUrl.trim() }
+            : { text: parseText.trim() },
+        ),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const p = data.parsed;
+        // Auto-populate form fields. Only overwrite empty ones (so manual edits aren't lost).
+        if (p.business_name && !businessName) setBusinessName(p.business_name);
+        if (p.source_title && !sourceTitle) setSourceTitle(p.source_title);
+        if (p.city && !city) setCity(p.city);
+        if (p.state && !stateCode) setStateCode(p.state);
+        if (p.industry && (PROSPECT_INDUSTRIES as string[]).includes(p.industry) && !industry) {
+          setIndustry(p.industry as ProspectIndustry);
+        }
+        if (p.size && (PROSPECT_SIZES as string[]).includes(p.size) && !size) {
+          setSize(p.size as ProspectSize);
+        }
+        if (Array.isArray(p.service_signal) && p.service_signal.length > 0) {
+          const next = new Set(services);
+          for (const s of p.service_signal) {
+            if ((SERVICE_INTERESTS as string[]).includes(s)) next.add(s as ServiceInterest);
+          }
+          setServices(next);
+        }
+        // Populate URL if it was set in the parse panel and form URL is empty.
+        if (parsePane === "url" && parseUrl.trim() && !sourceUrl) {
+          setSourceUrl(parseUrl.trim());
+        }
+        // raw_content gets the parsed text (full source, not Claude's summary).
+        if (p.raw_content && !rawContent) setRawContent(p.raw_content);
+        if (p.summary) setParseSummary(p.summary);
+        setParseStatus("parsed");
+      } else {
+        const body = await res.json().catch(() => null);
+        setParseError(body?.message ?? "Parse failed.");
+        setParseStatus("error");
+      }
+    } catch {
+      setParseError("Something went wrong.");
+      setParseStatus("error");
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -83,6 +149,94 @@ export default function NewLeadForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Parse with Claude panel */}
+      <section className="p-5 border border-accent rounded-lg bg-accent/5 space-y-3">
+        <div>
+          <h2 className="text-sm font-medium uppercase tracking-wider text-accent mb-1">
+            Parse with Claude
+          </h2>
+          <p className="text-xs text-muted">
+            Paste a job posting / article body, or try a URL. Claude extracts business name, location, industry, size, and service signal — you review + save.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 text-sm">
+          <button
+            type="button"
+            onClick={() => setParsePane("text")}
+            className={`px-3 py-1 rounded-md border text-xs transition ${
+              parsePane === "text"
+                ? "border-accent bg-surface-strong"
+                : "border-border text-muted hover:border-foreground/40"
+            }`}
+          >
+            Paste text
+          </button>
+          <button
+            type="button"
+            onClick={() => setParsePane("url")}
+            className={`px-3 py-1 rounded-md border text-xs transition ${
+              parsePane === "url"
+                ? "border-accent bg-surface-strong"
+                : "border-border text-muted hover:border-foreground/40"
+            }`}
+          >
+            From URL
+          </button>
+        </div>
+
+        {parsePane === "text" ? (
+          <textarea
+            value={parseText}
+            onChange={(e) => setParseText(e.target.value)}
+            rows={6}
+            placeholder="Paste the posting body, article text, or RFP content here."
+            className={inputClasses}
+          />
+        ) : (
+          <>
+            <input
+              type="url"
+              value={parseUrl}
+              onChange={(e) => setParseUrl(e.target.value)}
+              placeholder="https://..."
+              className={inputClasses}
+            />
+            <p className="text-xs text-muted">
+              Heads up: Indeed and LinkedIn often block server fetches. If it fails, just paste the text instead.
+            </p>
+          </>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={handleParse}
+            disabled={
+              parseStatus === "parsing" ||
+              (parsePane === "url" ? !parseUrl.trim() : !parseText.trim())
+            }
+            className="px-5 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {parseStatus === "parsing" ? "Parsing…" : "Parse + populate"}
+          </button>
+          {parseStatus === "parsed" && (
+            <span className="text-xs text-muted">
+              ✓ Populated below. Review and edit any field before saving.
+            </span>
+          )}
+          {parseError && (
+            <span className="text-sm text-red-600">{parseError}</span>
+          )}
+        </div>
+
+        {parseSummary && (
+          <p className="text-xs text-muted italic pt-2 border-t border-border">
+            Claude&apos;s read: {parseSummary}
+          </p>
+        )}
+      </section>
+
       <Field label="Source type" required>
         <select
           value={sourceType}
