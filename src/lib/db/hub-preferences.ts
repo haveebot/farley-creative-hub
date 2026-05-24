@@ -2,32 +2,25 @@
  * Hub preferences — single-row table for operator-chrome settings.
  *
  * Separate from brand kits because the Hub's look-and-feel is a
- * different concern from the studio's brand identity. The studio
- * might use a #b8d0bb pistachio for its actual brand while Collie
- * prefers a #c97d5d terracotta for the Hub chrome — both legit.
+ * different concern from the studio's brand identity.
+ *
+ * Client code should import types/constants from
+ * @/lib/hub-preferences-shared (no DB deps).
  */
 
 import { queryOne } from "./client";
+import type { HubPreferences } from "@/lib/hub-preferences-shared";
 
-export type HubTheme = "light" | "dark";
-
-export const HUB_THEMES: HubTheme[] = ["light", "dark"];
-
-export type HubPreferences = {
-  id: number;
-  hub_label: string;
-  accent_color: string;
-  theme: HubTheme;
-  updated_at: Date;
-};
+export type {
+  HubPreferences,
+  HubTheme,
+} from "@/lib/hub-preferences-shared";
+export { HUB_THEMES } from "@/lib/hub-preferences-shared";
 
 export type HubPreferencesUpdate = Partial<Omit<HubPreferences, "id" | "updated_at">>;
 
 const SELECT_SQL = `SELECT * FROM hub_preferences ORDER BY id LIMIT 1`;
 
-/**
- * Load the hub preferences row. Creates it with defaults if missing.
- */
 export async function getHubPreferences(): Promise<HubPreferences> {
   const existing = await queryOne<HubPreferences>(SELECT_SQL);
   if (existing) return existing;

@@ -6,7 +6,7 @@ import {
   HUB_THEMES,
   type HubPreferences,
   type HubTheme,
-} from "@/lib/db/hub-preferences";
+} from "@/lib/hub-preferences-shared";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
