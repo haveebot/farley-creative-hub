@@ -34,6 +34,9 @@ export default async function EtsySettingsPage({
             <a href="/settings/agent-access" className="text-muted hover:text-foreground transition">
               Agent access
             </a>
+            <a href="/settings/workspace" className="text-muted hover:text-foreground transition">
+              Workspace
+            </a>
             <a href="/settings/etsy" className="font-medium underline">
               Etsy
             </a>

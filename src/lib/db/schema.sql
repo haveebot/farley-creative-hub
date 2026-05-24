@@ -299,3 +299,25 @@ CREATE INDEX IF NOT EXISTS prospect_sends_enrollment_idx ON prospect_sends (enro
 CREATE INDEX IF NOT EXISTS prospect_sends_status_idx ON prospect_sends (status);
 CREATE INDEX IF NOT EXISTS prospect_sends_scheduled_idx ON prospect_sends (scheduled_for) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS prospect_sends_created_at_idx ON prospect_sends (created_at DESC);
+
+-- 2026-05-24: workspace_connections (Google Workspace OAuth tokens).
+-- Single-user pattern for now (one connection = Collie's collie@farleycreative.com).
+-- Cadence sends route through here instead of Resend so they land in her Sent folder.
+CREATE TABLE IF NOT EXISTS workspace_connections (
+  id              SERIAL PRIMARY KEY,
+  email           TEXT NOT NULL,                     -- the connected account, e.g. collie@farleycreative.com
+  refresh_token   TEXT NOT NULL,                     -- long-lived; used to mint access tokens
+  access_token    TEXT,                              -- current short-lived (~1h) access token
+  access_expires_at TIMESTAMPTZ,                     -- when access_token expires
+  scopes          TEXT[] NOT NULL DEFAULT '{}',      -- granted OAuth scopes
+  connected_by    TEXT NOT NULL,
+  connected_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS workspace_connections_email_idx ON workspace_connections (LOWER(email));
+CREATE INDEX IF NOT EXISTS workspace_connections_updated_at_idx ON workspace_connections (updated_at DESC);
+
+-- 2026-05-24: prospect_sends.send_via — track which channel each send used
+-- (gmail | resend). Defaults to 'gmail' for new sends after this migration.
+ALTER TABLE prospect_sends ADD COLUMN IF NOT EXISTS send_via TEXT NOT NULL DEFAULT 'gmail';

@@ -249,6 +249,7 @@ export type SendCreate = {
   subject: string;
   body: string;
   scheduled_for: Date | string;
+  send_via?: "gmail" | "resend" | "none";
 };
 
 export async function listSendsForEnrollment(enrollmentId: number): Promise<ProspectSend[]> {
@@ -271,8 +272,8 @@ export async function createSend(input: SendCreate): Promise<ProspectSend> {
   const row = await queryOne<ProspectSend>(
     `INSERT INTO prospect_sends
        (enrollment_id, step_id, step_number, to_email, to_name,
-        subject, body, status, scheduled_for)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+        subject, body, status, scheduled_for, send_via)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, COALESCE($9, 'gmail'))
      RETURNING *`,
     [
       input.enrollment_id,
@@ -283,13 +284,20 @@ export async function createSend(input: SendCreate): Promise<ProspectSend> {
       input.subject,
       input.body,
       input.scheduled_for,
+      input.send_via ?? null,
     ],
   );
   if (!row) throw new Error("Failed to create send");
   return row;
 }
 
-export async function markSendSent(id: number, resendMessageId: string): Promise<ProspectSend> {
+/**
+ * Mark a send as successfully delivered. `externalMessageId` is the
+ * provider's message id (Gmail's `id`, Resend's `id`, etc.) — stored
+ * in the `resend_message_id` column for historical compat; the column
+ * is effectively channel-agnostic regardless of name.
+ */
+export async function markSendSent(id: number, externalMessageId: string): Promise<ProspectSend> {
   const row = await queryOne<ProspectSend>(
     `UPDATE prospect_sends
         SET status = 'sent',
@@ -297,7 +305,7 @@ export async function markSendSent(id: number, resendMessageId: string): Promise
             sent_at = NOW()
       WHERE id = $1
       RETURNING *`,
-    [id, resendMessageId],
+    [id, externalMessageId],
   );
   if (!row) throw new Error("Failed to mark send sent");
   return row;
