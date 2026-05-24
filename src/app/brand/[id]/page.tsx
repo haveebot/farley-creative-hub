@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getBrandKit } from "@/lib/db/brand-kits";
 import TopNav from "../../TopNav";
 import BrandKitForm from "../BrandKitForm";
+import BrandBookUploader from "./BrandBookUploader";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,9 @@ export default async function BrandKitDetailPage({
             </p>
           </header>
           <BrandKitForm initial={kit} />
+          <div className="mt-10">
+            <BrandBookUploader kitId={kit.id} />
+          </div>
         </div>
       </main>
     </>
