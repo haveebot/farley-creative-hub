@@ -72,6 +72,25 @@ import {
 } from "@/lib/db/leads";
 import { LEAD_SOURCE_TYPES, LEAD_STATUSES } from "@/lib/leads-shared";
 import { fetchUrlToText, parseLead } from "@/lib/ai/parse-lead";
+import {
+  createCadence,
+  createStep,
+  getCadenceWithSteps,
+  listCadences,
+  listSteps,
+} from "@/lib/db/cadences";
+import {
+  cancelEnrollment,
+  createEnrollment,
+  getEnrollment,
+  listDraftedSends,
+  listEnrollments,
+  listEnrollmentsForProspect,
+  listSendsForEnrollment,
+  pauseEnrollment,
+  resumeEnrollment,
+} from "@/lib/db/enrollments";
+import { ENROLLMENT_STATUSES, type EnrollmentStatus } from "@/lib/cadences-shared";
 import { query } from "@/lib/db/client";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
@@ -691,6 +710,252 @@ const TOOLS: ToolDef[] = [
       }).catch(() => null);
 
       return { prospect_id: prospect.id, lead_id: lead.id };
+    },
+  },
+
+  // ============ Cadences ============
+
+  {
+    name: "list_cadences",
+    description:
+      "List outreach cadences — reusable multi-step email sequences. Each cadence has a name + ordered steps. Prospects enroll in a cadence; the Hub drafts each step into the operator's Gmail Drafts folder at its scheduled time for human review + send. By default lists only active cadences; pass include_inactive: true to include archived ones.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        include_inactive: { type: "boolean" },
+      },
+    },
+    handler: async (args) => {
+      const includeInactive = args.include_inactive === true;
+      return { cadences: await listCadences(includeInactive) };
+    },
+  },
+  {
+    name: "get_cadence",
+    description:
+      "Get a single cadence by id, including its ordered steps (step_number, delay_days, delay_hours, draft_prompt, subject_template). Use this before adding new steps or enrolling a prospect, so you know what's already there.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "integer" },
+      },
+      required: ["id"],
+    },
+    handler: async (args) => {
+      const id = Number(args.id);
+      const cadence = await getCadenceWithSteps(id);
+      if (!cadence) throw new Error(`Cadence #${id} not found`);
+      return cadence;
+    },
+  },
+  {
+    name: "create_cadence",
+    description:
+      "Create a new outreach cadence. The cadence is empty (no steps yet) — call add_cadence_step to populate it. brand_kit_id selects the voice the Hub will draft each step in; defaults to the studio brand kit. Returns the new cadence id which you'll need for add_cadence_step and enroll_prospect.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        brand_kit_id: {
+          type: "integer",
+          description:
+            "Brand kit id whose voice drafts will use. Defaults to the studio kit. Use list_brand_kits to find client kit ids.",
+        },
+      },
+      required: ["name"],
+    },
+    handler: async (args, ctx) => {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (!name) throw new Error("name is required");
+      return createCadence({
+        name,
+        description: typeof args.description === "string" ? args.description : "",
+        brand_kit_id:
+          typeof args.brand_kit_id === "number" ? args.brand_kit_id : null,
+        created_by: `agent:${ctx.agentName}`,
+      });
+    },
+  },
+  {
+    name: "add_cadence_step",
+    description:
+      "Append a step to an existing cadence. Steps run in order; delay is relative to the previous step (or to enrollment time for step 1). draft_prompt is the prompt Claude will use to draft each email at send time — it's the seed instruction, NOT the literal email body. Example draft_prompt: 'Polite follow-up after no reply — restate the value prop in one sentence and ask if a different time works.' subject_template is optional; if set it's used literally, otherwise Claude drafts the subject too.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cadence_id: { type: "integer" },
+        delay_days: { type: "integer", minimum: 0 },
+        delay_hours: { type: "integer", minimum: 0, maximum: 23 },
+        draft_prompt: { type: "string" },
+        subject_template: { type: "string" },
+      },
+      required: ["cadence_id", "draft_prompt"],
+    },
+    handler: async (args) => {
+      const cadenceId = Number(args.cadence_id);
+      const draftPrompt =
+        typeof args.draft_prompt === "string" ? args.draft_prompt.trim() : "";
+      if (!draftPrompt) throw new Error("draft_prompt is required");
+      const existing = await listSteps(cadenceId);
+      return createStep({
+        cadence_id: cadenceId,
+        step_number: existing.length + 1,
+        delay_days: typeof args.delay_days === "number" ? args.delay_days : 0,
+        delay_hours: typeof args.delay_hours === "number" ? args.delay_hours : 0,
+        draft_prompt: draftPrompt,
+        subject_template:
+          typeof args.subject_template === "string"
+            ? args.subject_template.trim() || null
+            : null,
+      });
+    },
+  },
+
+  // ============ Enrollments ============
+
+  {
+    name: "list_enrollments",
+    description:
+      "List prospect enrollments (the runtime instances of a cadence applied to a specific prospect). Optionally filter by status: 'active' (cron is processing it), 'paused' (manually paused), 'completed' (all steps drafted), 'cancelled' (terminal).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ENROLLMENT_STATUSES },
+      },
+    },
+    handler: async (args) => {
+      const status =
+        typeof args.status === "string" &&
+        (ENROLLMENT_STATUSES as string[]).includes(args.status)
+          ? (args.status as EnrollmentStatus)
+          : undefined;
+      return { enrollments: await listEnrollments(status ? { status } : undefined) };
+    },
+  },
+  {
+    name: "get_enrollment",
+    description:
+      "Get a single enrollment with its send history (drafted/sent emails for this prospect on this cadence). Useful for seeing what's already been drafted to the prospect, what status each send is in, and what step is next.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "integer" },
+      },
+      required: ["id"],
+    },
+    handler: async (args) => {
+      const id = Number(args.id);
+      const enrollment = await getEnrollment(id);
+      if (!enrollment) throw new Error(`Enrollment #${id} not found`);
+      const sends = await listSendsForEnrollment(id);
+      return { enrollment, sends };
+    },
+  },
+  {
+    name: "list_enrollments_for_prospect",
+    description:
+      "List all enrollments (past + active) for a specific prospect. Use to check whether a prospect already has an active enrollment before trying to enroll them again (only one active enrollment per prospect allowed).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prospect_id: { type: "integer" },
+      },
+      required: ["prospect_id"],
+    },
+    handler: async (args) => {
+      const prospectId = Number(args.prospect_id);
+      return { enrollments: await listEnrollmentsForProspect(prospectId) };
+    },
+  },
+  {
+    name: "enroll_prospect",
+    description:
+      "Enroll a prospect in a cadence. Sets status='active' and schedules the first step at NOW + step1's delay. Cron tick will draft each step into the operator's Gmail Drafts folder when its time arrives. Only one active enrollment per prospect; surfaces a 'already-enrolled' error if the prospect already has an active one (pause or cancel that one first). Prospect must have at least one contact with an email or the cron will skip sending.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prospect_id: { type: "integer" },
+        cadence_id: { type: "integer" },
+      },
+      required: ["prospect_id", "cadence_id"],
+    },
+    handler: async (args, ctx) => {
+      const prospectId = Number(args.prospect_id);
+      const cadenceId = Number(args.cadence_id);
+      try {
+        return await createEnrollment({
+          prospect_id: prospectId,
+          cadence_id: cadenceId,
+          enrolled_by: `agent:${ctx.agentName}`,
+        });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg.includes("prospect_enrollments_active_idx")) {
+          throw new Error(
+            "This prospect already has an active enrollment. Pause or cancel it first.",
+          );
+        }
+        throw err;
+      }
+    },
+  },
+  {
+    name: "pause_enrollment",
+    description:
+      "Pause an active enrollment. The cron stops drafting new steps. Use resume_enrollment to start it back up.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "integer" },
+      },
+      required: ["id"],
+    },
+    handler: async (args) => pauseEnrollment(Number(args.id)),
+  },
+  {
+    name: "resume_enrollment",
+    description:
+      "Resume a previously paused enrollment. The next step's send time is recomputed from NOW + its delay.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "integer" },
+      },
+      required: ["id"],
+    },
+    handler: async (args) => resumeEnrollment(Number(args.id)),
+  },
+  {
+    name: "cancel_enrollment",
+    description:
+      "Cancel an enrollment terminally. Status flips to 'cancelled'; no further drafts. Use when a prospect has explicitly opted out or the cadence no longer applies. Optionally pass a reason for the audit trail.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "integer" },
+        reason: { type: "string" },
+      },
+      required: ["id"],
+    },
+    handler: async (args) => {
+      const reason = typeof args.reason === "string" ? args.reason : undefined;
+      return cancelEnrollment(Number(args.id), reason);
+    },
+  },
+  {
+    name: "list_drafted_sends",
+    description:
+      "List cadence emails currently drafted in the operator's Gmail Drafts folder, awaiting human review + send. Each entry shows the prospect, subject, body, and when it was drafted. The operator sends each one manually from Gmail — the Hub never auto-sends. Use this to see what's queued for review.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+      },
+    },
+    handler: async (args) => {
+      const limit = typeof args.limit === "number" ? args.limit : 20;
+      return { drafted_sends: await listDraftedSends(limit) };
     },
   },
 ];
