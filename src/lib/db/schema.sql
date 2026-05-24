@@ -45,9 +45,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS brand_kits_studio_self_idx
   ON brand_kits (is_studio_self) WHERE is_studio_self = TRUE;
 
 -- Phase 1: agent_tokens (programmatic API access)
--- Token plaintext is SHA-256 hashed at rest. Only the prefix is stored
--- plaintext for display ("which token is this?"). Full token shown once
--- at creation; never recoverable after.
 CREATE TABLE IF NOT EXISTS agent_tokens (
   id            SERIAL PRIMARY KEY,
   name          TEXT NOT NULL,
@@ -60,3 +57,22 @@ CREATE TABLE IF NOT EXISTS agent_tokens (
 
 CREATE INDEX IF NOT EXISTS agent_tokens_active_idx
   ON agent_tokens (token_hash) WHERE revoked_at IS NULL;
+
+-- Phase 1: assets (file library — logos, brand books, design masters, etc.)
+CREATE TABLE IF NOT EXISTS assets (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  filename      TEXT NOT NULL,
+  url           TEXT NOT NULL,
+  mime_type     TEXT NOT NULL,
+  size_bytes    BIGINT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'general',
+  brand_kit_id  INTEGER REFERENCES brand_kits(id) ON DELETE SET NULL,
+  description   TEXT NOT NULL DEFAULT '',
+  uploaded_by   TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS assets_kind_idx ON assets (kind);
+CREATE INDEX IF NOT EXISTS assets_brand_kit_idx ON assets (brand_kit_id);
+CREATE INDEX IF NOT EXISTS assets_created_at_idx ON assets (created_at DESC);
