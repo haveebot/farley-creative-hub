@@ -18,28 +18,18 @@ export default function AppleIcon() {
           background: "#c97d5d",
           color: "#fafaf7",
           display: "flex",
-          alignItems: "baseline",
+          alignItems: "center",
           justifyContent: "center",
           fontFamily: "Georgia, serif",
           fontWeight: 700,
+          fontStyle: "italic",
           fontSize: 150,
-          letterSpacing: -6,
-          paddingTop: 20,
+          lineHeight: 1,
+          letterSpacing: -10,
+          paddingBottom: 10,
         }}
       >
-        <span style={{ fontStyle: "italic", display: "flex" }}>F</span>
-        <span
-          style={{
-            display: "flex",
-            fontStyle: "normal",
-            fontWeight: 900,
-            color: "#fafaf7",
-            opacity: 0.9,
-            marginLeft: 4,
-          }}
-        >
-          .
-        </span>
+        F.
       </div>
     ),
     { ...size },

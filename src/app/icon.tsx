@@ -24,29 +24,19 @@ export default function Icon() {
           background: "#c97d5d",
           color: "#fafaf7",
           display: "flex",
-          alignItems: "baseline",
+          alignItems: "center",
           justifyContent: "center",
           fontFamily: "Georgia, serif",
           fontWeight: 700,
+          fontStyle: "italic",
           fontSize: 28,
-          letterSpacing: -1,
+          lineHeight: 1,
+          letterSpacing: -2,
           borderRadius: 7,
-          paddingTop: 4,
+          paddingBottom: 2,
         }}
       >
-        <span style={{ fontStyle: "italic", display: "flex" }}>F</span>
-        <span
-          style={{
-            display: "flex",
-            fontStyle: "normal",
-            fontWeight: 900,
-            color: "#fafaf7",
-            opacity: 0.9,
-            marginLeft: 1,
-          }}
-        >
-          .
-        </span>
+        F.
       </div>
     ),
     { ...size },
