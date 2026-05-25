@@ -81,11 +81,51 @@ function buildBrandSystemBlock(brand: BrandKit): string {
     "STUDIO BIO",
     brand.bio || "(no bio provided yet)",
     "",
-    "VOICE NOTES — how the studio sounds",
+    "VOICE NOTES — how the studio sounds (described)",
     brand.voice_notes || "(no voice notes provided yet)",
+  ];
+
+  if (brand.writing_samples && brand.writing_samples.trim()) {
+    lines.push(
+      "",
+      "WRITING SAMPLES — actual examples of the studio's voice. Pattern-match against these. They are the strongest signal of how to sound.",
+      brand.writing_samples,
+    );
+  }
+
+  if (brand.audience_persona && brand.audience_persona.trim()) {
+    lines.push(
+      "",
+      "AUDIENCE — who the studio is writing to. Tune voice, references, and assumed knowledge to this reader.",
+      brand.audience_persona,
+    );
+  }
+
+  if (brand.differentiators && brand.differentiators.trim()) {
+    lines.push(
+      "",
+      "POSITIONING — what makes this studio different. Lead with this kind of value, not generic descriptors.",
+      brand.differentiators,
+    );
+  }
+
+  lines.push(
     "",
-    "BRAND BOOK NOTES — guidelines, do's and don'ts, positioning",
+    "BRAND BOOK NOTES — guidelines, do's and don'ts, longer-form positioning",
     brand.brand_book_notes || "(no brand book notes provided yet)",
+  );
+
+  if (brand.always_say && brand.always_say.length > 0) {
+    lines.push("", "ALWAYS-SAY — favored words/phrases. Prefer these when they fit.");
+    brand.always_say.forEach((p) => lines.push(`  • ${p}`));
+  }
+
+  if (brand.never_say && brand.never_say.length > 0) {
+    lines.push("", "NEVER-SAY — forbidden words/phrases. Never use these, even close variants.");
+    brand.never_say.forEach((p) => lines.push(`  • ${p}`));
+  }
+
+  lines.push(
     "",
     "PALETTE (for reference if visual descriptions come up):",
     `  Primary: ${brand.primary_color || "(unset)"}`,
@@ -100,11 +140,12 @@ function buildBrandSystemBlock(brand: BrandKit): string {
     "",
     "RULES",
     "- Match the voice notes precisely. If they say 'never corporate' — never sound corporate.",
+    "- If WRITING SAMPLES are provided, weight them above the descriptive VOICE NOTES — show, don't just describe.",
     "- Don't fabricate product specs, prices, sizes, or details the prompt didn't provide.",
     "- If the prompt is ambiguous, draft the most likely interpretation and note your assumption at the bottom in a single line: 'Assumed: X.'",
     "- Don't include filler intros like 'Here is a draft of...'.",
     "- Don't sign off with 'Best,' / 'Cheers,' unless the prompt asks for an email.",
-  ];
+  );
   return lines.join("\n");
 }
 

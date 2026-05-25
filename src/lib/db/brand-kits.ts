@@ -28,6 +28,12 @@ export type BrandKit = {
   website_url: string;
   instagram_url: string;
   pinterest_url: string;
+  /** Brand kit depth — added 2026-05-24 PM. */
+  writing_samples: string;
+  always_say: string[];
+  never_say: string[];
+  audience_persona: string;
+  differentiators: string;
   created_at: Date;
   updated_at: Date;
 };

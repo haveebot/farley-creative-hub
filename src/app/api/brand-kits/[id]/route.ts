@@ -23,11 +23,16 @@ const STRING_FIELDS: Array<keyof BrandKitUpdate> = [
   "accent_color",
   "voice_notes",
   "brand_book_notes",
+  "writing_samples",
+  "audience_persona",
+  "differentiators",
   "etsy_shop_url",
   "website_url",
   "instagram_url",
   "pinterest_url",
 ];
+
+const ARRAY_FIELDS: Array<keyof BrandKitUpdate> = ["always_say", "never_say"];
 
 const COLOR_FIELDS: Array<keyof BrandKitUpdate> = [
   "primary_color",
@@ -80,6 +85,15 @@ export async function PUT(
     const v = body[f];
     if (typeof v === "string") {
       updates[f] = v.trim() as never;
+    }
+  }
+  for (const f of ARRAY_FIELDS) {
+    const v = body[f];
+    if (Array.isArray(v)) {
+      updates[f] = v
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0) as never;
     }
   }
 

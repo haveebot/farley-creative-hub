@@ -61,17 +61,57 @@ Output rules:
 - Title must be ≤140 characters.`;
 
 function buildBrandSystemBlock(brand: BrandKit): string {
-  return [
+  const lines = [
     `You are writing for ${brand.name}, a creative studio.`,
     "",
     "STUDIO BIO",
     brand.bio || "(no bio provided)",
     "",
-    "VOICE NOTES",
+    "VOICE NOTES (described)",
     brand.voice_notes || "(no voice notes provided)",
+  ];
+
+  if (brand.writing_samples && brand.writing_samples.trim()) {
+    lines.push(
+      "",
+      "WRITING SAMPLES — actual examples of the studio's voice. Pattern-match against these; they outweigh the descriptive voice notes when in tension.",
+      brand.writing_samples,
+    );
+  }
+
+  if (brand.audience_persona && brand.audience_persona.trim()) {
+    lines.push(
+      "",
+      "AUDIENCE — who the studio is writing to. Tune voice, references, and assumed knowledge to this reader.",
+      brand.audience_persona,
+    );
+  }
+
+  if (brand.differentiators && brand.differentiators.trim()) {
+    lines.push(
+      "",
+      "POSITIONING — what makes this studio different. Lead with this in copy that introduces the work.",
+      brand.differentiators,
+    );
+  }
+
+  lines.push(
     "",
     "BRAND BOOK NOTES",
     brand.brand_book_notes || "(no brand book notes provided)",
+  );
+
+  if (brand.always_say && brand.always_say.length > 0) {
+    lines.push("", "ALWAYS-SAY — favored words/phrases. Prefer these when they fit.");
+    brand.always_say.forEach((p) => lines.push(`  • ${p}`));
+  }
+
+  if (brand.never_say && brand.never_say.length > 0) {
+    lines.push("", "NEVER-SAY — forbidden words/phrases.");
+    brand.never_say.forEach((p) => lines.push(`  • ${p}`));
+  }
+
+  lines.push(
     "",
     "PALETTE (reference only)",
     `  Primary: ${brand.primary_color || "(unset)"}`,
@@ -81,7 +121,8 @@ function buildBrandSystemBlock(brand: BrandKit): string {
     "LINKS (reference; don't stuff into copy):",
     `  Etsy: ${brand.etsy_shop_url || "(unset)"}`,
     `  Site: ${brand.website_url || "(unset)"}`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 export async function draftListing(input: ListingDraftInput): Promise<ListingDraftOutput> {

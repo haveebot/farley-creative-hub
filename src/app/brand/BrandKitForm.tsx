@@ -17,6 +17,15 @@ export default function BrandKitForm({ initial }: { initial: BrandKit }) {
   const [accentColor, setAccentColor] = useState(initial.accent_color);
   const [voiceNotes, setVoiceNotes] = useState(initial.voice_notes);
   const [brandBookNotes, setBrandBookNotes] = useState(initial.brand_book_notes);
+  const [writingSamples, setWritingSamples] = useState(initial.writing_samples ?? "");
+  const [audiencePersona, setAudiencePersona] = useState(initial.audience_persona ?? "");
+  const [differentiators, setDifferentiators] = useState(initial.differentiators ?? "");
+  const [alwaysSayInput, setAlwaysSayInput] = useState(
+    (initial.always_say ?? []).join(", "),
+  );
+  const [neverSayInput, setNeverSayInput] = useState(
+    (initial.never_say ?? []).join(", "),
+  );
   const [etsyShopUrl, setEtsyShopUrl] = useState(initial.etsy_shop_url);
   const [websiteUrl, setWebsiteUrl] = useState(initial.website_url);
   const [instagramUrl, setInstagramUrl] = useState(initial.instagram_url);
@@ -41,6 +50,12 @@ export default function BrandKitForm({ initial }: { initial: BrandKit }) {
       }
     }
 
+    const splitCsv = (s: string) =>
+      s
+        .split(",")
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+
     setStatus("saving");
     try {
       const res = await fetch(`/api/brand-kits/${initial.id}`, {
@@ -54,6 +69,11 @@ export default function BrandKitForm({ initial }: { initial: BrandKit }) {
           accent_color: accentColor,
           voice_notes: voiceNotes,
           brand_book_notes: brandBookNotes,
+          writing_samples: writingSamples,
+          audience_persona: audiencePersona,
+          differentiators: differentiators,
+          always_say: splitCsv(alwaysSayInput),
+          never_say: splitCsv(neverSayInput),
           etsy_shop_url: etsyShopUrl,
           website_url: websiteUrl,
           instagram_url: instagramUrl,
@@ -98,20 +118,94 @@ export default function BrandKitForm({ initial }: { initial: BrandKit }) {
       </Section>
 
       <Section title="Voice">
-        <Field label="Voice notes" hint="How the studio sounds. Adjectives, phrases, things you'd never say.">
+        <Field label="Voice notes" hint="How the studio sounds (described). Adjectives, phrases, energy. Quick.">
           <textarea
             value={voiceNotes}
             onChange={(e) => setVoiceNotes(e.target.value)}
-            rows={5}
+            rows={4}
             placeholder="e.g. Warm, confident, lightly playful. Concrete over abstract. Never corporate or salesy."
             className={inputClasses}
           />
         </Field>
-        <Field label="Brand book notes" hint="Paste any brand-book content here — guidelines, do's and don'ts, positioning, audience notes. AI reads this when generating anything in the studio voice. (File upload coming next session.)">
+        <Field
+          label="Writing samples"
+          hint="Paste 3-5 actual examples of how the studio sounds — a past listing, customer reply, Instagram caption. Claude pattern-matches against these (much stronger signal than descriptive voice notes). Separate samples with --- on their own line."
+        >
+          <textarea
+            value={writingSamples}
+            onChange={(e) => setWritingSamples(e.target.value)}
+            rows={10}
+            placeholder={`Example 1 — Etsy listing description:
+Made for the bride who wants every detail to feel intentional...
+
+---
+
+Example 2 — customer reply:
+Hi Sarah — yes, totally doable. The color palette you mentioned would look gorgeous on this template; I can swap it before sending the final.
+
+---
+
+Example 3 — Instagram caption:
+Three days, three trial runs of the same envelope flap. Worth it.`}
+            className={inputClasses}
+          />
+        </Field>
+        <Field
+          label="Audience persona"
+          hint="Who the studio is writing to. The clearer this is, the better Claude tunes its voice + references."
+        >
+          <textarea
+            value={audiencePersona}
+            onChange={(e) => setAudiencePersona(e.target.value)}
+            rows={4}
+            placeholder="e.g. Brides planning outdoor / garden weddings, 28-35, design-literate, value craft over speed, allergic to corporate or salesy. Often shop on Etsy after pinning for weeks."
+            className={inputClasses}
+          />
+        </Field>
+        <Field
+          label="Differentiators / positioning"
+          hint="What makes this studio different from a hundred others in the same category. What you lead with."
+        >
+          <textarea
+            value={differentiators}
+            onChange={(e) => setDifferentiators(e.target.value)}
+            rows={4}
+            placeholder="e.g. Hand-painted (not stock illustration) botanical templates fully editable in Canva. Studio prioritizes quiet craft over trend-chasing. Three color palettes per design, painted in-house."
+            className={inputClasses}
+          />
+        </Field>
+        <Field
+          label="Always-say phrases"
+          hint="Words/phrases Claude should prefer when they fit. Comma-separated."
+        >
+          <input
+            type="text"
+            value={alwaysSayInput}
+            onChange={(e) => setAlwaysSayInput(e.target.value)}
+            placeholder="hand-painted, made for, watercolor, fully editable"
+            className={inputClasses}
+          />
+        </Field>
+        <Field
+          label="Never-say phrases"
+          hint="Words/phrases Claude must never use. Comma-separated. The hard guardrails."
+        >
+          <input
+            type="text"
+            value={neverSayInput}
+            onChange={(e) => setNeverSayInput(e.target.value)}
+            placeholder="circle back, looking forward to hearing from you, exclusive offer, just checking in"
+            className={inputClasses}
+          />
+        </Field>
+        <Field
+          label="Brand book notes"
+          hint="Long-form brand-book content. Auto-extracted from PDF upload if you attach one (file upload coming separately). AI reads this in addition to the fields above."
+        >
           <textarea
             value={brandBookNotes}
             onChange={(e) => setBrandBookNotes(e.target.value)}
-            rows={8}
+            rows={6}
             placeholder="Paste content from your brand book or guidelines doc. Anything that helps AI draft on-brand."
             className={inputClasses}
           />

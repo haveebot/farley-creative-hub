@@ -48,6 +48,20 @@ CREATE TABLE IF NOT EXISTS brand_kits (
 CREATE UNIQUE INDEX IF NOT EXISTS brand_kits_studio_self_idx
   ON brand_kits (is_studio_self) WHERE is_studio_self = TRUE;
 
+-- 2026-05-24 (PM, late): brand kit depth — additional fields that compound
+-- across every Claude-touched surface (cadence drafts, listings, generic
+-- drafts). voice_notes/brand_book_notes describe how the studio sounds;
+-- these go further:
+--   - writing_samples: actual examples to pattern-match against
+--   - always_say / never_say: hard guardrails (phrases to favor/avoid)
+--   - audience_persona: who the studio is talking to
+--   - differentiators: what makes this studio different (positioning)
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS writing_samples TEXT NOT NULL DEFAULT '';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS always_say TEXT[] NOT NULL DEFAULT '{}'::text[];
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS never_say TEXT[] NOT NULL DEFAULT '{}'::text[];
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS audience_persona TEXT NOT NULL DEFAULT '';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS differentiators TEXT NOT NULL DEFAULT '';
+
 -- Phase 1: agent_tokens (programmatic API access)
 CREATE TABLE IF NOT EXISTS agent_tokens (
   id            SERIAL PRIMARY KEY,
