@@ -4,7 +4,13 @@
  */
 
 import { query, queryOne } from "./client";
-import type { Listing, ListingStatus } from "@/lib/listings-shared";
+import type {
+  EtsyState,
+  EtsyWhenMade,
+  EtsyWhoMade,
+  Listing,
+  ListingStatus,
+} from "@/lib/listings-shared";
 
 export type { Listing, ListingStatus } from "@/lib/listings-shared";
 
@@ -22,7 +28,46 @@ export type ListingCreate = {
   created_by: string;
 };
 
-export type ListingUpdate = Partial<Omit<ListingCreate, "created_by">>;
+export type ListingUpdate = Partial<Omit<ListingCreate, "created_by">> & {
+  // Etsy-publishing fields, all optional on update
+  price_cents?: number | null;
+  currency_code?: string;
+  quantity?: number;
+  etsy_listing_id?: number | null;
+  etsy_state?: EtsyState;
+  etsy_taxonomy_id?: number | null;
+  etsy_shipping_profile_id?: number | null;
+  etsy_who_made?: EtsyWhoMade;
+  etsy_when_made?: EtsyWhenMade;
+  etsy_pushed_at?: string | null;
+  etsy_synced_at?: string | null;
+  etsy_url?: string | null;
+};
+
+const ALLOWED_UPDATE_FIELDS = new Set<string>([
+  "working_name",
+  "asset_id",
+  "brand_kit_id",
+  "context_notes",
+  "title",
+  "description",
+  "tags",
+  "keywords",
+  "status",
+  "ai_model_used",
+  "price_cents",
+  "currency_code",
+  "quantity",
+  "etsy_listing_id",
+  "etsy_state",
+  "etsy_taxonomy_id",
+  "etsy_shipping_profile_id",
+  "etsy_who_made",
+  "etsy_when_made",
+  "etsy_pushed_at",
+  "etsy_synced_at",
+  "etsy_url",
+]);
 
 export async function listListings(filter?: { status?: ListingStatus }): Promise<Listing[]> {
   if (filter?.status) {
@@ -67,7 +112,9 @@ export async function createListing(input: ListingCreate): Promise<Listing> {
 }
 
 export async function updateListing(id: number, updates: ListingUpdate): Promise<Listing> {
-  const fields = Object.keys(updates) as Array<keyof ListingUpdate>;
+  const fields = (Object.keys(updates) as Array<keyof ListingUpdate>).filter((f) =>
+    ALLOWED_UPDATE_FIELDS.has(f as string),
+  );
   if (fields.length === 0) {
     const existing = await getListing(id);
     if (!existing) throw new Error("Listing not found");
@@ -80,7 +127,6 @@ export async function updateListing(id: number, updates: ListingUpdate): Promise
     values.push(updates[f]);
   });
   setClauses.push(`updated_at = NOW()`);
-  // If status flipped to 'posted', stamp posted_at
   if (updates.status === "posted") {
     setClauses.push(`posted_at = NOW()`);
   }

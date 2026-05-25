@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getListing } from "@/lib/db/listings";
-import { getAsset } from "@/lib/db/assets";
+import { getAsset, listAssets } from "@/lib/db/assets";
+import { listImagesForListing } from "@/lib/db/listing-images";
 import TopNav from "../../TopNav";
 import ListingEditor from "./ListingEditor";
 
@@ -17,7 +18,18 @@ export default async function ListingPage({
   const listing = await getListing(numId);
   if (!listing) notFound();
 
-  const asset = listing.asset_id ? await getAsset(listing.asset_id) : null;
+  const [asset, imagesRaw, allAssets] = await Promise.all([
+    listing.asset_id ? getAsset(listing.asset_id) : Promise.resolve(null),
+    listImagesForListing(numId),
+    listAssets(),
+  ]);
+
+  const imageAssets = allAssets.filter((a) => a.mime_type.startsWith("image/"));
+  const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
+  const images = imagesRaw.map((img) => ({
+    ...img,
+    asset: imageAssetById.get(img.asset_id),
+  }));
 
   return (
     <>
@@ -33,7 +45,12 @@ export default async function ListingPage({
               <a href="/listings" className="underline">← Listings</a>
             </p>
           </header>
-          <ListingEditor initialListing={listing} asset={asset} />
+          <ListingEditor
+            initialListing={listing}
+            asset={asset}
+            initialImages={images}
+            imageAssets={imageAssets}
+          />
         </div>
       </main>
     </>

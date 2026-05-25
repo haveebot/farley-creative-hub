@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Asset } from "@/lib/db/assets";
-import type { Listing, ListingStatus } from "@/lib/listings-shared";
+import type { Listing, ListingImage, ListingStatus } from "@/lib/listings-shared";
 import { LISTING_STATUS_LABELS } from "@/lib/listings-shared";
+import EtsyPublishPanel from "./EtsyPublishPanel";
+import ImageAttachmentsPanel from "./ImageAttachmentsPanel";
 
 const inputClasses =
   "w-full border border-border rounded px-3 py-2 bg-surface text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-accent";
@@ -12,12 +14,19 @@ const inputClasses =
 export default function ListingEditor({
   initialListing,
   asset,
+  initialImages,
+  imageAssets,
 }: {
   initialListing: Listing;
   asset: Asset | null;
+  initialImages: (ListingImage & { asset?: Asset })[];
+  imageAssets: Asset[];
 }) {
   const router = useRouter();
   const [listing, setListing] = useState<Listing>(initialListing);
+  const [images, setImages] = useState<(ListingImage & { asset?: Asset })[]>(
+    initialImages,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -241,6 +250,21 @@ export default function ListingEditor({
       {error && (
         <p className="text-sm text-red-600 -mt-3">{error}</p>
       )}
+
+      {/* Images for Etsy push */}
+      <ImageAttachmentsPanel
+        listingId={listing.id}
+        initialImages={images}
+        imageAssets={imageAssets}
+        onChange={setImages}
+      />
+
+      {/* Etsy publishing fields + push */}
+      <EtsyPublishPanel
+        listing={listing}
+        images={images}
+        onListingUpdate={setListing}
+      />
 
       <section className="flex items-center justify-between pt-3 border-t border-border">
         <p className="text-xs text-muted">

@@ -13,7 +13,14 @@ import {
   getListing,
   updateListing,
 } from "@/lib/db/listings";
-import { LISTING_STATUSES, type ListingStatus } from "@/lib/listings-shared";
+import {
+  ETSY_WHEN_MADE,
+  ETSY_WHO_MADE,
+  LISTING_STATUSES,
+  type EtsyWhenMade,
+  type EtsyWhoMade,
+  type ListingStatus,
+} from "@/lib/listings-shared";
 
 export async function GET(
   _request: Request,
@@ -61,6 +68,35 @@ export async function PATCH(
   }
   if (typeof body.status === "string" && (LISTING_STATUSES as string[]).includes(body.status)) {
     updates.status = body.status as ListingStatus;
+  }
+
+  // Etsy-publishing fields
+  if (body.price_cents === null || typeof body.price_cents === "number") {
+    updates.price_cents = body.price_cents;
+  }
+  if (typeof body.quantity === "number" && body.quantity >= 0) {
+    updates.quantity = Math.floor(body.quantity);
+  }
+  if (body.etsy_taxonomy_id === null || typeof body.etsy_taxonomy_id === "number") {
+    updates.etsy_taxonomy_id = body.etsy_taxonomy_id;
+  }
+  if (
+    body.etsy_shipping_profile_id === null ||
+    typeof body.etsy_shipping_profile_id === "number"
+  ) {
+    updates.etsy_shipping_profile_id = body.etsy_shipping_profile_id;
+  }
+  if (
+    typeof body.etsy_who_made === "string" &&
+    (ETSY_WHO_MADE as readonly string[]).includes(body.etsy_who_made)
+  ) {
+    updates.etsy_who_made = body.etsy_who_made as EtsyWhoMade;
+  }
+  if (
+    typeof body.etsy_when_made === "string" &&
+    (ETSY_WHEN_MADE as readonly string[]).includes(body.etsy_when_made)
+  ) {
+    updates.etsy_when_made = body.etsy_when_made as EtsyWhenMade;
   }
 
   try {

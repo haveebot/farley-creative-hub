@@ -1,6 +1,7 @@
 import { listListings } from "@/lib/db/listings";
 import { LISTING_STATUS_LABELS } from "@/lib/listings-shared";
 import TopNav from "../TopNav";
+import SyncFromEtsyButton from "./SyncFromEtsyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -18,28 +19,31 @@ export default async function ListingsPage() {
             </p>
             <h1 className="text-2xl font-serif mb-2">Listings</h1>
             <p className="text-sm text-muted leading-relaxed">
-              Prep Etsy listing copy with Claude — title, description, tags, keywords — drafted in your studio voice. Edit anything, then copy each field into Etsy when you publish. (No Etsy API needed; this is the prep-then-paste workflow.)
+              Draft listings with Claude in your studio voice, attach images from your asset library, then push to Etsy as drafts you can review + publish from your seller dashboard. Already on Etsy? Use Sync to pull existing listings in.
             </p>
           </header>
 
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <p className="text-sm text-muted">
               {listings.length === 0
                 ? "No listings yet."
                 : `${listings.length} listing${listings.length === 1 ? "" : "s"}.`}
             </p>
-            <a
-              href="/listings/new"
-              className="text-sm font-medium underline hover:text-accent transition"
-            >
-              + Prep new listing
-            </a>
+            <div className="flex items-center gap-4">
+              <SyncFromEtsyButton />
+              <a
+                href="/listings/new"
+                className="text-sm font-medium underline hover:text-accent transition"
+              >
+                + Prep new listing
+              </a>
+            </div>
           </div>
 
           {listings.length === 0 ? (
             <div className="border border-border rounded p-8 text-center">
               <p className="text-sm text-muted mb-4">
-                Each listing starts with a few sentences about what you're selling — design type, use case, customization options, file format. Claude drafts the full Etsy listing package in your studio voice; you review and copy each field into Etsy when you post.
+                Each listing starts with a few sentences about what you&apos;re selling — design type, use case, customization options, file format. Claude drafts the full Etsy listing package in your studio voice; you set price, pick a category, attach images, and push to Etsy as a draft for final review.
               </p>
               <a
                 href="/listings/new"
@@ -63,6 +67,21 @@ export default async function ListingsPage() {
                           Title: {l.title}
                         </p>
                       )}
+                      <p className="text-xs text-muted mt-1 flex items-center gap-3 flex-wrap">
+                        {l.price_cents != null && (
+                          <span>${(l.price_cents / 100).toFixed(2)}</span>
+                        )}
+                        {l.price_cents != null && <span>·</span>}
+                        <span>qty {l.quantity}</span>
+                        {l.etsy_state && (
+                          <>
+                            <span>·</span>
+                            <span className="text-accent">
+                              {etsyStateLabel(l.etsy_state)}
+                            </span>
+                          </>
+                        )}
+                      </p>
                     </div>
                     <span
                       className={`text-xs uppercase tracking-wider ml-3 shrink-0 ${
@@ -84,4 +103,21 @@ export default async function ListingsPage() {
       </main>
     </>
   );
+}
+
+function etsyStateLabel(state: string): string {
+  switch (state) {
+    case "active":
+      return "Live on Etsy";
+    case "draft":
+      return "Etsy draft";
+    case "inactive":
+      return "Etsy inactive";
+    case "expired":
+      return "Etsy expired";
+    case "sold_out":
+      return "Sold out";
+    default:
+      return state;
+  }
 }

@@ -362,3 +362,47 @@ CREATE TABLE IF NOT EXISTS listings (
 CREATE INDEX IF NOT EXISTS listings_status_idx ON listings (status);
 CREATE INDEX IF NOT EXISTS listings_asset_id_idx ON listings (asset_id);
 CREATE INDEX IF NOT EXISTS listings_created_at_idx ON listings (created_at DESC);
+
+-- Etsy-publishing fields. price_cents/quantity required for a push;
+-- taxonomy + shipping profile are picked once per listing from Etsy.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_cents INTEGER;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_listing_id BIGINT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_state TEXT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_taxonomy_id INTEGER;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_shipping_profile_id BIGINT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_who_made TEXT NOT NULL DEFAULT 'i_did';
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_when_made TEXT NOT NULL DEFAULT 'made_to_order';
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_pushed_at TIMESTAMPTZ;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_synced_at TIMESTAMPTZ;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS etsy_url TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS listings_etsy_listing_id_idx ON listings (etsy_listing_id) WHERE etsy_listing_id IS NOT NULL;
+
+-- ============ listing_images (multi-image attachments to a listing) ============
+CREATE TABLE IF NOT EXISTS listing_images (
+  id            SERIAL PRIMARY KEY,
+  listing_id    INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  asset_id      INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  position      INTEGER NOT NULL DEFAULT 0,
+  etsy_image_id BIGINT,
+  uploaded_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS listing_images_listing_idx ON listing_images (listing_id, position);
+CREATE UNIQUE INDEX IF NOT EXISTS listing_images_unique ON listing_images (listing_id, asset_id);
+
+-- ============ etsy_taxonomy_cache (server-side cache of Etsy's tree) ============
+CREATE TABLE IF NOT EXISTS etsy_taxonomy_cache (
+  id          INTEGER PRIMARY KEY,
+  parent_id   INTEGER,
+  name        TEXT NOT NULL,
+  level       INTEGER NOT NULL,
+  path        TEXT NOT NULL,
+  fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS etsy_taxonomy_cache_parent_idx ON etsy_taxonomy_cache (parent_id);
+CREATE INDEX IF NOT EXISTS etsy_taxonomy_cache_name_idx ON etsy_taxonomy_cache (LOWER(name));
