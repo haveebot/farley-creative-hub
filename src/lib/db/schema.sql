@@ -347,6 +347,33 @@ CREATE TABLE IF NOT EXISTS daily_briefings (
 
 CREATE INDEX IF NOT EXISTS daily_briefings_for_date_idx ON daily_briefings (for_date DESC);
 
+-- 2026-05-24 (PM, late): listings (Etsy listing prep — Collie's #1 bottleneck).
+-- Structured drafting surface separate from generic drafts: each listing
+-- has discrete fields for title / description / tags / keywords so the
+-- operator can copy each one independently into Etsy's separate inputs.
+-- Optionally backed by an asset (e.g. the design file the listing is for).
+CREATE TABLE IF NOT EXISTS listings (
+  id              SERIAL PRIMARY KEY,
+  working_name    TEXT NOT NULL,                -- operator's internal name to find this listing
+  asset_id        INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+  brand_kit_id    INTEGER REFERENCES brand_kits(id) ON DELETE SET NULL,
+  context_notes   TEXT NOT NULL DEFAULT '',     -- what the listing IS (operator's freeform input)
+  title           TEXT NOT NULL DEFAULT '',     -- Etsy title (max 140 chars per Etsy rules)
+  description     TEXT NOT NULL DEFAULT '',     -- Etsy description (multi-paragraph)
+  tags            TEXT[] NOT NULL DEFAULT '{}', -- Etsy tags (max 13)
+  keywords        TEXT[] NOT NULL DEFAULT '{}', -- suggested keywords for woven-into-description use
+  status          TEXT NOT NULL DEFAULT 'draft',-- draft | approved | posted | archived
+  ai_model_used   TEXT,
+  created_by      TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  posted_at       TIMESTAMPTZ                   -- when operator marked it posted to Etsy
+);
+
+CREATE INDEX IF NOT EXISTS listings_status_idx ON listings (status);
+CREATE INDEX IF NOT EXISTS listings_asset_id_idx ON listings (asset_id);
+CREATE INDEX IF NOT EXISTS listings_created_at_idx ON listings (created_at DESC);
+
 -- 2026-05-24: prospect_sends.send_via — track which channel each send used
 -- (gmail | resend). Defaults to 'gmail' for new sends after this migration.
 ALTER TABLE prospect_sends ADD COLUMN IF NOT EXISTS send_via TEXT NOT NULL DEFAULT 'gmail';
