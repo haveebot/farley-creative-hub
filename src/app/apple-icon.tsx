@@ -4,9 +4,9 @@ export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
 /**
- * Apple touch icon (iOS home-screen). Same mark as the favicon but
- * rendered at 180x180 so it stays crisp when iOS rounds the corners
- * and renders it on the home screen.
+ * Apple touch icon (iOS home-screen) — same mark as the favicon
+ * but rendered at 180px. iOS adds its own corner rounding so we
+ * skip border-radius here; the F. mark is what carries the design.
  */
 export default function AppleIcon() {
   return new ImageResponse(
@@ -15,21 +15,31 @@ export default function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          background:
-            "linear-gradient(135deg, #c97d5d 0%, #a85a3d 100%)",
+          background: "#c97d5d",
           color: "#fafaf7",
           display: "flex",
-          alignItems: "center",
+          alignItems: "baseline",
           justifyContent: "center",
           fontFamily: "Georgia, serif",
           fontWeight: 700,
-          fontStyle: "italic",
-          fontSize: 140,
+          fontSize: 150,
           letterSpacing: -6,
-          paddingRight: 10,
+          paddingTop: 20,
         }}
       >
-        F
+        <span style={{ fontStyle: "italic", display: "flex" }}>F</span>
+        <span
+          style={{
+            display: "flex",
+            fontStyle: "normal",
+            fontWeight: 900,
+            color: "#fafaf7",
+            opacity: 0.9,
+            marginLeft: 4,
+          }}
+        >
+          .
+        </span>
       </div>
     ),
     { ...size },

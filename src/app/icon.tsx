@@ -4,10 +4,15 @@ export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
 /**
- * Favicon — italic serif "F" on the studio accent color.
- * Placeholder until Collie ships a proper mark. Uses the same accent
- * (#c97d5d) the rest of the Hub keys off, so it sits next to the
- * tenant identity instead of looking like a default.
+ * Favicon — confident serif "F." on the studio accent.
+ *
+ * v2 design notes (placeholder for Collie's real mark):
+ * - Rounded corners read as "intentionally designed" vs default OS square
+ * - Flat accent #c97d5d (gradient was invisible at 32px)
+ * - Period as a tiny studio-mark flourish — gives the F a hook and
+ *   visually anchors it so it doesn't look lonely in the square
+ * - Heavier weight + larger letter so it fills the square confidently
+ * - Slight italic tilt for character without losing serif clarity
  */
 export default function Icon() {
   return new ImageResponse(
@@ -16,22 +21,32 @@ export default function Icon() {
         style={{
           width: "100%",
           height: "100%",
-          background:
-            "linear-gradient(135deg, #c97d5d 0%, #a85a3d 100%)",
+          background: "#c97d5d",
           color: "#fafaf7",
           display: "flex",
-          alignItems: "center",
+          alignItems: "baseline",
           justifyContent: "center",
           fontFamily: "Georgia, serif",
           fontWeight: 700,
-          fontStyle: "italic",
-          fontSize: 26,
+          fontSize: 28,
           letterSpacing: -1,
-          // Slight optical offset so the italic F feels balanced
-          paddingRight: 2,
+          borderRadius: 7,
+          paddingTop: 4,
         }}
       >
-        F
+        <span style={{ fontStyle: "italic", display: "flex" }}>F</span>
+        <span
+          style={{
+            display: "flex",
+            fontStyle: "normal",
+            fontWeight: 900,
+            color: "#fafaf7",
+            opacity: 0.9,
+            marginLeft: 1,
+          }}
+        >
+          .
+        </span>
       </div>
     ),
     { ...size },
