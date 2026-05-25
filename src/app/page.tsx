@@ -3,8 +3,10 @@ import { listBrandKits } from "@/lib/db/brand-kits";
 import { listAssets } from "@/lib/db/assets";
 import { listDrafts } from "@/lib/db/drafts";
 import { listDraftedSends } from "@/lib/db/enrollments";
+import { listLeads } from "@/lib/db/leads";
 import { listProspects } from "@/lib/db/prospects";
 import { listRecentActivity } from "@/lib/db/activity-feed";
+import { query } from "@/lib/db/client";
 import { KIND_LABELS } from "@/lib/drafts-shared";
 import {
   gatherBriefingContext,
@@ -17,22 +19,39 @@ import {
 } from "@/lib/db/daily-briefings";
 import DailyBriefing from "./DailyBriefing";
 import Greeting from "./Greeting";
+import PipelineFunnel from "./PipelineFunnel";
 import TopNav from "./TopNav";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [email, kits, assets, allDrafts, allProspects, activity, draftedSends, existingBriefing] =
-    await Promise.all([
-      getCurrentOperatorEmail(),
-      listBrandKits(),
-      listAssets(),
-      listDrafts(),
-      listProspects(),
-      listRecentActivity(15),
-      listDraftedSends(20),
-      getTodayBriefing(),
-    ]);
+  const [
+    email,
+    kits,
+    assets,
+    allDrafts,
+    allProspects,
+    activity,
+    draftedSends,
+    existingBriefing,
+    allLeads,
+    allProspectActivity,
+  ] = await Promise.all([
+    getCurrentOperatorEmail(),
+    listBrandKits(),
+    listAssets(),
+    listDrafts(),
+    listProspects(),
+    listRecentActivity(15),
+    listDraftedSends(20),
+    getTodayBriefing(),
+    listLeads(),
+    // Full prospect_activity for the funnel (status_change events
+    // power the "advances this week" stat).
+    query<{ kind: string; created_at: string; prospect_id: number }>(
+      `SELECT kind, created_at, prospect_id FROM prospect_activity ORDER BY created_at DESC LIMIT 500`,
+    ),
+  ]);
 
   // First-load-of-day auto-generates the briefing. Subsequent loads use cache.
   // Failure is non-fatal — the rest of the home page still renders.
@@ -279,6 +298,12 @@ export default async function Home() {
             </ul>
           </section>
         )}
+
+        <PipelineFunnel
+          prospects={allProspects}
+          leads={allLeads}
+          activity={allProspectActivity}
+        />
 
         {/* Recent assets strip */}
         {recentAssets.length > 0 && (
