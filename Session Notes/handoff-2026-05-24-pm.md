@@ -113,6 +113,22 @@ Memory rule locked alongside the pivot: [[feedback_hear_what_winston_says_not_my
 ### 0. Tier 1 backup — DAILY DB DUMPS (locked, first move)
 ~45 min. Cron endpoint `/api/cron/db-backup` runs once daily, dumps both schemas (real + demo) as compressed SQL to Vercel Blob under `backups/`, keeps 30 daily + 12 monthly with auto-prune. Plus a one-page restore runbook. Closes the "corruption not noticed for 2 weeks" gap that Neon's 7-day window misses.
 
+### 0.5. ETSY APP APPROVED — finalize the integration (high priority)
+The resubmitted app `farley-girls-creative-hub` was approved by Etsy after the original banned-app recovery this morning. Activation is small (~20-30 min) but unlocks Collie's stated original #1 bottleneck via the actual API instead of just the prep-then-paste workflow.
+
+Activation steps:
+1. From Etsy Developer portal (logged in as Collie's account), copy the now-active **keystring** + **shared secret** for `farley-girls-creative-hub`.
+2. Add to Vercel `farley-creative-hub` project env vars (NOT the demo project): `ETSY_CLIENT_ID` = keystring, `ETSY_CLIENT_SECRET` = shared secret. Mark Sensitive.
+3. Redeploy FC Hub.
+4. Have Collie visit `hub.farleycreative.com/settings/etsy` → click **Connect Etsy →** → Etsy asks her to authorize Farley Girls Creative shop → tokens stored in `etsy_connections` table.
+5. Smoke test: `curl https://hub.farleycreative.com/api/etsy/shop` (with her session cookie) should return the connected shop's metadata.
+
+Once connected, the existing OAuth scaffold handles auto-refresh on token expiry. After activation works, the natural follow-on builds:
+- Auto-publish from `/listings` (mark a listing as "posted" actually pushes to Etsy as a draft listing)
+- Sales/transaction import surfaced on Hub home (this-week revenue + recent orders)
+- Customer message viewing for the connected shop
+- All of these use the existing `etsyFetch()` client we already shipped
+
 ### 1. Demo vs FC Hub explainer (READY — read before building)
 Pre-written reference doc at [`Farley Creative Hub/operator-runbooks/demo-vs-fc-hub.md`](../Farley%20Creative%20Hub/operator-runbooks/demo-vs-fc-hub.md). Covers what's the same, what's different (the one DEMO_MODE flag flipping 4 behaviors), how the same data shape becomes a different experience, why we chose this architecture vs alternatives. No build — just clarity for grounding the rest of the queue.
 

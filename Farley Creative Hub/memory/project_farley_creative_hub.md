@@ -106,8 +106,8 @@ JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. Tools exposed
 | Custom domain `hub.farleycreative.com` | ✅ Canva DNS CNAME |
 | Collie GitHub access (`colliebreah`) | ✅ invited |
 | Etsy Developer app — `farley-creativ-hub` (original) | ❌ **PERMANENTLY BANNED** 2026-05-24 — third-party-tool framing in original submission (dictated field-by-field, no draft, no policy review). Visible in Collie's developer portal under "Banned Apps". |
-| Etsy Developer app — `farley-girls-creative-hub` (resubmission) | ⏳ **Pending Personal Approval** since 2026-05-24 11:09 AM CT. Submitted from corrected artifact at `Farley Creative Hub/vendor-submissions/etsy-developer-app.md` with single-shop / sole-operator framing. Scopes: `shops_r`, `listings_r`, `listings_w`, `transactions_r`. Rate limit if approved: 5 QPS / 5K QPD. Etsy does NOT send notifications on rejection — check portal manually around 48h mark. Confirmation screenshot at `Farley Creative Hub/vendor-submissions/etsy-submission-2026-05-24-confirmation.png`. |
-| `ETSY_CLIENT_ID` + `_SECRET` | ⏳ after approval — key exists but is NOT active until approved per Etsy's banner |
+| Etsy Developer app — `farley-girls-creative-hub` (resubmission) | ✅ **APPROVED** 2026-05-24 PM (less than 12h after submission — the corrected single-shop / sole-operator framing landed clean). Key is now active. |
+| `ETSY_CLIENT_ID` + `_SECRET` | ⏳ next session — copy keystring + shared secret from Etsy developer portal into Vercel FC Hub project env vars, redeploy, run Collie through OAuth at `/settings/etsy` |
 | Resend domain verify for `farleycreative.com` | ⏳ pending — blocks cadence-tick send step |
 | `RESEND_API_KEY` + `RESEND_FROM_EMAIL` | ⏳ pending — set after domain verify |
 | `CRON_SECRET` (Vercel env, used by /api/cron/cadence-tick) | ⏳ pending — generate a random string, set in Vercel; Vercel Cron sends it in `Authorization: Bearer ${CRON_SECRET}` header |
