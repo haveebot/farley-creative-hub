@@ -361,6 +361,71 @@ function stripHtml(html: string): string {
  * Remove a label from a message. Used to mark a message as "processed"
  * after the Hub has extracted leads from it.
  */
+/**
+ * Add a label to a message. Used by the backfill endpoint to retroactively
+ * label past matching messages so the cron picks them up.
+ */
+export async function addLabel(
+  messageId: string,
+  labelId: string,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<void> {
+  const { accessToken } = await getValidAccessToken(purpose);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ addLabelIds: [labelId] }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gmail addLabel failed: ${res.status} — ${text}`);
+  }
+}
+
+/**
+ * Search messages by Gmail query string (q=...). Returns minimal info
+ * (id + threadId only). Used by the backfill endpoint to find past
+ * matching messages before applying a label.
+ */
+export async function searchMessages(
+  q: string,
+  limit = 100,
+  purpose: ConnectionPurpose = "reading_leads",
+): Promise<Array<{ id: string; threadId: string }>> {
+  const { accessToken } = await getValidAccessToken(purpose);
+  const results: Array<{ id: string; threadId: string }> = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    url.searchParams.set("q", q);
+    url.searchParams.set("maxResults", String(Math.min(100, limit - results.length)));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Gmail messages.list (search) failed: ${res.status} — ${text}`);
+    }
+    const data = (await res.json()) as {
+      messages?: Array<{ id: string; threadId: string }>;
+      nextPageToken?: string;
+    };
+    if (data.messages) results.push(...data.messages);
+    pageToken = results.length < limit ? data.nextPageToken : undefined;
+  } while (pageToken && results.length < limit);
+
+  return results.slice(0, limit);
+}
+
 export async function removeLabel(
   messageId: string,
   labelId: string,
