@@ -1,7 +1,9 @@
 import { listCadences } from "@/lib/db/cadences";
 import { listEnrollments } from "@/lib/db/enrollments";
+import { CADENCE_TEMPLATES } from "@/lib/cadence-templates";
 import TopNav from "../TopNav";
 import PipelineTabs from "../pipeline/PipelineTabs";
+import TemplateGallery from "./TemplateGallery";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,8 @@ export default async function CadencesPage() {
           </header>
           <PipelineTabs active="cadences" />
 
+          <TemplateGallery templates={CADENCE_TEMPLATES} />
+
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted">
               {cadences.length === 0
@@ -44,21 +48,15 @@ export default async function CadencesPage() {
               href="/cadences/new"
               className="text-sm font-medium underline hover:text-accent transition"
             >
-              + New cadence
+              + New cadence from scratch
             </a>
           </div>
 
           {cadences.length === 0 ? (
-            <div className="border border-border rounded p-8 text-center">
-              <p className="text-sm text-muted mb-4">
-                Cadences are reusable outreach sequences — first touch, follow-up at day 3, nudge at day 7, etc. You define the prompts; Claude drafts the actual messages at send time.
+            <div className="border border-border rounded p-6 text-center">
+              <p className="text-sm text-muted">
+                No cadences yet — clone a template above to get started, or build one from scratch.
               </p>
-              <a
-                href="/cadences/new"
-                className="inline-block text-sm font-medium underline hover:text-accent transition"
-              >
-                Create your first cadence →
-              </a>
             </div>
           ) : (
             <ul className="divide-y divide-border border-y border-border">
