@@ -14,5 +14,7 @@ export type HubPreferences = {
   hub_label: string;
   accent_color: string;
   theme: HubTheme;
+  /** Custom favicon URL. When null, /icon falls back to the generated F mark. */
+  favicon_url: string | null;
   updated_at: Date;
 };

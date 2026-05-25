@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS hub_preferences (
 -- Phase 1: theme added 2026-05-24 — light | dark (system option later)
 ALTER TABLE hub_preferences ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'light';
 
+-- 2026-05-24 (PM, late): custom favicon URL. When set, /icon and /apple-icon
+-- serve this image instead of the generated F. mark. Operator uploads via
+-- /settings or sets the URL directly via MCP update_hub_preferences.
+ALTER TABLE hub_preferences ADD COLUMN IF NOT EXISTS favicon_url TEXT;
+
 -- Phase 1: brand_kits (studio + clients; same shape, scoped by is_studio_self)
 CREATE TABLE IF NOT EXISTS brand_kits (
   id                SERIAL PRIMARY KEY,

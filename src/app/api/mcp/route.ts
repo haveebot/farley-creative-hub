@@ -123,7 +123,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "update_hub_preferences",
     description:
-      "Update the Hub's look-and-feel settings. Only pass fields you want to change. accent_color must be a hex value like #c97d5d.",
+      "Update the Hub's look-and-feel settings. Only pass fields you want to change. accent_color must be a hex value like #c97d5d. favicon_url should be a public image URL (PNG/JPEG/SVG/etc.); pass null to clear and fall back to the default F mark.",
     inputSchema: {
       type: "object",
       properties: {
@@ -132,13 +132,22 @@ const TOOLS: ToolDef[] = [
           type: "string",
           pattern: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
         },
+        favicon_url: {
+          type: ["string", "null"],
+          description:
+            "Public URL of a custom favicon image. Pass null to clear (Hub falls back to the generated F mark). To upload a file, use the form at /settings instead — there's no direct file-upload tool here.",
+        },
       },
     },
     handler: async (args) => {
-      const updates: Record<string, string> = {};
+      const updates: Record<string, unknown> = {};
       if (typeof args.hub_label === "string") updates.hub_label = args.hub_label;
       if (typeof args.accent_color === "string") updates.accent_color = args.accent_color;
-      return updateHubPreferences(updates);
+      if (args.favicon_url === null || typeof args.favicon_url === "string") {
+        updates.favicon_url = args.favicon_url;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return updateHubPreferences(updates as any);
     },
   },
   {

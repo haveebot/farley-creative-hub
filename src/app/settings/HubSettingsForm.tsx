@@ -7,6 +7,7 @@ import {
   type HubPreferences,
   type HubTheme,
 } from "@/lib/hub-preferences-shared";
+import FaviconUpload from "./FaviconUpload";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
@@ -123,6 +124,10 @@ export default function HubSettingsForm({ initial }: { initial: HubPreferences }
         {status === "error" && errorMessage && (
           <span className="text-sm text-red-600">{errorMessage}</span>
         )}
+      </div>
+
+      <div className="pt-6 mt-2 border-t border-border">
+        <FaviconUpload initialUrl={initial.favicon_url} />
       </div>
     </form>
   );
