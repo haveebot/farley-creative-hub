@@ -42,6 +42,11 @@
 | `c69a075` | **feat: B — Cadence template gallery (3 starter cadences, one-click clone)** |
 | `31b7fe3` | **feat: D — Etsy listing prep workflow (the prep-then-paste answer to Collie's #1 bottleneck without the API)** |
 | `b765b8b` | **feat: E — Brand kit depth (writing samples + always/never-say + audience + positioning)** |
+| `7353292` / `65435b4` / `f85bbb7` / `b38946c` | favicon — italic-serif F mark (v1 → v2 fixes → final) |
+| `b07e580` | feat: custom favicon upload + MCP-settable (operator drops their own; Hub falls back to F) |
+| `df0beac` | **feat: demo-mode infrastructure + seed script for fcdemohub.com** |
+| `4e74909` | chore: add seed-demo npm script |
+| `73b611b` | fix: reorder schema.sql so FKs resolve on a fresh DB (critical for new-tenant spin-up) |
 
 ## Where things stand
 
@@ -78,6 +83,8 @@
 | **Cadence template gallery** | ✓ 3 starter cadences on /cadences (3-touch intro, post-discovery follow-up, long-form 5-step nurture). One-click clone → fully editable real cadence |
 | **Etsy listing prep workflow** | ✓ /listings surface: context-aware Claude drafting → structured title/description/tags/keywords with copy-buttons → status flow draft/approved/posted/archived. Solves the #1 bottleneck even without Etsy API |
 | **Brand kit depth** | ✓ 5 new fields on brand kits (writing samples / always-say / never-say / audience persona / differentiators). Compounds across every Claude-touched surface |
+| **Favicon** | ✓ Italic serif "F" placeholder on coral; operator can drop a custom one via /settings upload OR MCP update_hub_preferences |
+| **Demo Hub (fcdemohub.com)** | ✓ **LIVE.** Separate Vercel project (`farley-creative-hub-demo`), separate Neon DB (`neon-almond-crystal`), same codebase as FC Hub. DEMO_MODE=true flips posture: auth bypassed, writes return 403, banner at top, cron no-ops. Seeded with 9 prospects + 8 leads + 2 cadences (1 with active enrollment + drafted email) + 3 listings + deep studio brand kit. Public, no auth. |
 
 ### Architectural pivots mid-session (two)
 
