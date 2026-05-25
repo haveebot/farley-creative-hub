@@ -5,6 +5,7 @@ import {
   type WorkspaceConnection,
 } from "@/lib/db/workspace-connections";
 import TopNav from "../../TopNav";
+import BackfillForm from "./BackfillForm";
 
 export const dynamic = "force-dynamic";
 
@@ -78,30 +79,34 @@ export default async function WorkspaceSettingsPage({
               />
 
               {readingLeads && (
-                <div className="p-5 border border-border rounded-lg bg-surface">
-                  <p className="text-xs uppercase tracking-widest text-muted mb-2">
-                    Lead capture setup
-                  </p>
-                  <p className="text-xs text-muted">
-                    For the lead-poll cron to find anything, set up a Gmail
-                    filter in <strong>{readingLeads.email}</strong>'s inbox that
-                    applies the label <code>Hub/Leads</code> to whichever
-                    senders are job-alert sources. The Hub creates the label
-                    automatically on first poll if it doesn't already exist.
-                  </p>
-                  <p className="text-xs text-muted mt-2">
-                    Gmail filter setup:{" "}
-                    <strong>
-                      Gmail → Settings (gear) → See all settings → Filters and
-                      Blocked Addresses → Create a new filter
-                    </strong>
-                    . Match senders like{" "}
-                    <code>
-                      from:(noreply@indeed.com OR alerts@angellist.com)
-                    </code>
-                    . Action: <strong>Apply the label: Hub/Leads</strong>.
-                  </p>
-                </div>
+                <>
+                  <div className="p-5 border border-border rounded-lg bg-surface">
+                    <p className="text-xs uppercase tracking-widest text-muted mb-2">
+                      Lead capture setup
+                    </p>
+                    <p className="text-xs text-muted">
+                      For the lead-poll cron to find anything, set up a Gmail
+                      filter in <strong>{readingLeads.email}</strong>'s inbox that
+                      applies the label <code>Hub/Leads</code> to whichever
+                      senders are job-alert sources. The Hub creates the label
+                      automatically on first poll if it doesn't already exist.
+                    </p>
+                    <p className="text-xs text-muted mt-2">
+                      Gmail filter setup:{" "}
+                      <strong>
+                        Gmail → Settings (gear) → See all settings → Filters and
+                        Blocked Addresses → Create a new filter
+                      </strong>
+                      . Match senders like{" "}
+                      <code>
+                        from:(noreply@indeed.com OR alerts@angellist.com)
+                      </code>
+                      . Action: <strong>Apply the label: Hub/Leads</strong>.
+                    </p>
+                  </div>
+
+                  <BackfillForm workspaceEmail={readingLeads.email} />
+                </>
               )}
             </div>
           )}
