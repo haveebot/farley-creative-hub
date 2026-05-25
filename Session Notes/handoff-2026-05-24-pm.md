@@ -110,8 +110,31 @@ Memory rule locked alongside the pivot: [[feedback_hear_what_winston_says_not_my
 
 ## Next session pickup — in priority order
 
-### 1. Real-prospect first-send
-The earliest organic end-to-end validation: enroll a real prospect (not a test) in a real cadence. Cron fires at the top of the next hour. First real email actually goes out. Validates the full chain in a production-meaningful way.
+### 0. Tier 1 backup — DAILY DB DUMPS (locked, first move)
+~45 min. Cron endpoint `/api/cron/db-backup` runs once daily, dumps both schemas (real + demo) as compressed SQL to Vercel Blob under `backups/`, keeps 30 daily + 12 monthly with auto-prune. Plus a one-page restore runbook. Closes the "corruption not noticed for 2 weeks" gap that Neon's 7-day window misses.
+
+### 1. Demo vs FC Hub explainer (READY — read before building)
+Pre-written reference doc at [`Farley Creative Hub/operator-runbooks/demo-vs-fc-hub.md`](../Farley%20Creative%20Hub/operator-runbooks/demo-vs-fc-hub.md). Covers what's the same, what's different (the one DEMO_MODE flag flipping 4 behaviors), how the same data shape becomes a different experience, why we chose this architecture vs alternatives. No build — just clarity for grounding the rest of the queue.
+
+### 2. Mobile UX — snap + nav drawer
+~1-2 hours. Both deployments share the codebase so fixing once fixes both. Audit:
+- Top nav on mobile (needs a hamburger drawer instead of horizontal scroll)
+- Pipeline filters (currently scroll off-screen)
+- Asset grid + listing cards (left/right snap)
+- Cadence step editor (likely overflow issues)
+- Hub home cards (already grid-1-on-mobile, should be fine — verify)
+
+### 3. Workflow indicator on pipeline
+Medium build, ~2-3 hours. In-context "what can I do here?" surface on `/pipeline/[id]` that suggests next moves based on prospect status. E.g., status='discovery' → suggests "send proposal," "log call," "enroll in post-discovery cadence." Helps Collie discover the full capability of the pipeline.
+
+### 4. Website (farleycreative.com) review + Vercel migration prep
+Separate front-end track. Phase 0 = audit only (no build): what's currently on the Canva site, what should it become (real firm-enterprise web presence), what's the IA + page list. Likely produces its own repo + multi-session arc. Don't conflate with the Hub — that's the operations product. The website is the public marketing presence.
+
+### 5. Web traffic dashboard on Hub home
+Depends on #4 landing first. Once farleycreative.com is on Vercel, pull Vercel Analytics into Hub home — "your website got X visits this week, top pages, top referrers." Small add when its dependency is in place.
+
+### 6. Social media tools — FIRM-FACING only
+Big scope. Account linking (Instagram, Pinterest, etc.), scheduled posting, content drafting via Claude (already partially possible via `/drafts` kind='social_post'). **Important scope:** for HER firm's own social media marketing, NOT a service-to-clients social tool. Multi-session.
 
 ### 2. Email-forward lead capture (deferred from 5-24 AM handoff)
 `leads@farleycreative.com` Google Workspace alias → Resend inbound webhook → Hub auto-parses Indeed digests into individual leads.
