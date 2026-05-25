@@ -34,6 +34,14 @@
 | `3dc7464` | feat: recent Gmail exchange on prospect detail (reply-context for drafts) |
 | `fc3944b` | feat: lead capture from Gmail inbox via hourly poll |
 | `3ebf96c` | **feat: dual-purpose Workspace OAuth — sending vs lead source** |
+| `01af89e` | docs: truck update — full lead→cadence loop operational |
+| `42d806f` | feat: lead-backfill admin endpoint — retroactively label past matching mail |
+| `6d9fb5f` | feat: lead-backfill UI on /settings/workspace |
+| `16105d3` | **feat: A — Daily Briefing on Hub home (Claude-generated morning read)** |
+| `a0fbd72` | **feat: C — Pipeline funnel + week-in-review on Hub home** |
+| `c69a075` | **feat: B — Cadence template gallery (3 starter cadences, one-click clone)** |
+| `31b7fe3` | **feat: D — Etsy listing prep workflow (the prep-then-paste answer to Collie's #1 bottleneck without the API)** |
+| `b765b8b` | **feat: E — Brand kit depth (writing samples + always/never-say + audience + positioning)** |
 
 ## Where things stand
 
@@ -64,6 +72,12 @@
 | **Workspace OAuth (reading_leads — PFV identity)** | ✓ Connected as `collie@palmfamilyventures.com` |
 | **Lead capture from inbox** | ✓ Cron polls Hub/Leads label every 30 min on PFV inbox; Claude parses (digests fan out to multiple leads); imports to `/pipeline/leads`. Requires Gmail filter at PFV inbox to label matching senders. |
 | **Recent Gmail exchange (prospect detail)** | ✓ Shows last ~10 messages with primary contact, with thread deeplinks |
+| **Lead backfill** | ✓ Admin UI at /settings/workspace; retroactively labels past matching mail. Verified with 54 messages → 33 leads imported (Indeed/AngelList/LinkedIn) |
+| **Daily Briefing (Hub home)** | ✓ Claude-generated, cached per-day, Refresh button. Pulls drafts + leads + prospects + activity into 1-2 paragraph chief-of-staff read |
+| **Pipeline funnel + week-in-review** | ✓ Bottom of Hub home: funnel bars, 7d-vs-7d stats, hot prospects, stale alerts. Auto-hides when pipeline is empty |
+| **Cadence template gallery** | ✓ 3 starter cadences on /cadences (3-touch intro, post-discovery follow-up, long-form 5-step nurture). One-click clone → fully editable real cadence |
+| **Etsy listing prep workflow** | ✓ /listings surface: context-aware Claude drafting → structured title/description/tags/keywords with copy-buttons → status flow draft/approved/posted/archived. Solves the #1 bottleneck even without Etsy API |
+| **Brand kit depth** | ✓ 5 new fields on brand kits (writing samples / always-say / never-say / audience persona / differentiators). Compounds across every Claude-touched surface |
 
 ### Architectural pivots mid-session (two)
 
