@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getHubPreferences } from "@/lib/db/hub-preferences";
+import DemoBanner from "./DemoBanner";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -37,7 +38,10 @@ export default async function RootLayout({
           <style>{`:root { --accent: ${accent}; } .dark { --accent: ${accent}; }`}</style>
         </head>
       )}
-      <body>{children}</body>
+      <body>
+        <DemoBanner />
+        {children}
+      </body>
     </html>
   );
 }
