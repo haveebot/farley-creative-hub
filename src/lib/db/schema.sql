@@ -333,6 +333,20 @@ ALTER TABLE workspace_connections ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL
 CREATE UNIQUE INDEX IF NOT EXISTS workspace_connections_purpose_idx
   ON workspace_connections (purpose);
 
+-- 2026-05-24 (PM, late): daily_briefings (Claude-generated Hub home read).
+-- One row per day. Generated on first page load each day; cached for
+-- subsequent loads; refresh button regenerates in place.
+CREATE TABLE IF NOT EXISTS daily_briefings (
+  id              SERIAL PRIMARY KEY,
+  for_date        DATE NOT NULL UNIQUE,        -- the calendar date this briefing is FOR
+  content         TEXT NOT NULL,                -- the briefing text Claude generated
+  context_summary JSONB NOT NULL DEFAULT '{}', -- the structured signals that fed the prompt (audit/debug)
+  generated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  generated_by    TEXT NOT NULL                 -- 'auto' on first load, 'user' on manual refresh, etc.
+);
+
+CREATE INDEX IF NOT EXISTS daily_briefings_for_date_idx ON daily_briefings (for_date DESC);
+
 -- 2026-05-24: prospect_sends.send_via — track which channel each send used
 -- (gmail | resend). Defaults to 'gmail' for new sends after this migration.
 ALTER TABLE prospect_sends ADD COLUMN IF NOT EXISTS send_via TEXT NOT NULL DEFAULT 'gmail';

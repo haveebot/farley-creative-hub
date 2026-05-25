@@ -6,13 +6,23 @@ import { listDraftedSends } from "@/lib/db/enrollments";
 import { listProspects } from "@/lib/db/prospects";
 import { listRecentActivity } from "@/lib/db/activity-feed";
 import { KIND_LABELS } from "@/lib/drafts-shared";
+import {
+  gatherBriefingContext,
+  generateDailyBriefing,
+} from "@/lib/ai/daily-briefing";
+import {
+  getTodayBriefing,
+  todayDateString,
+  upsertBriefing,
+} from "@/lib/db/daily-briefings";
+import DailyBriefing from "./DailyBriefing";
 import Greeting from "./Greeting";
 import TopNav from "./TopNav";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [email, kits, assets, allDrafts, allProspects, activity, draftedSends] =
+  const [email, kits, assets, allDrafts, allProspects, activity, draftedSends, existingBriefing] =
     await Promise.all([
       getCurrentOperatorEmail(),
       listBrandKits(),
@@ -21,7 +31,27 @@ export default async function Home() {
       listProspects(),
       listRecentActivity(15),
       listDraftedSends(20),
+      getTodayBriefing(),
     ]);
+
+  // First-load-of-day auto-generates the briefing. Subsequent loads use cache.
+  // Failure is non-fatal — the rest of the home page still renders.
+  let briefing = existingBriefing;
+  if (!briefing) {
+    try {
+      const ctx = await gatherBriefingContext();
+      const content = await generateDailyBriefing(ctx);
+      briefing = await upsertBriefing({
+        for_date: todayDateString(),
+        content,
+        context_summary: ctx,
+        generated_by: "auto",
+      });
+    } catch (err) {
+      console.warn("[Home] daily briefing auto-gen failed", err);
+      briefing = null;
+    }
+  }
 
   const studio = kits.find((k) => k.is_studio_self);
   const clientKitCount = kits.filter((k) => !k.is_studio_self).length;
@@ -52,11 +82,25 @@ export default async function Home() {
     <>
       <TopNav />
       <main className="min-h-screen p-8 md:p-12">
-        <header className="max-w-5xl mx-auto mb-12">
+        <header className="max-w-5xl mx-auto mb-8">
           <h1 className="text-3xl font-serif">
             <Greeting />.
           </h1>
         </header>
+
+        <div className="max-w-5xl mx-auto">
+          <DailyBriefing
+            initial={
+              briefing
+                ? {
+                    content: briefing.content,
+                    generated_at: briefing.generated_at,
+                    generated_by: briefing.generated_by,
+                  }
+                : null
+            }
+          />
+        </div>
 
         <section className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Awaiting You */}
