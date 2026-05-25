@@ -28,6 +28,12 @@
 | `3f58b61` | **feat: pivot cadence sends to Gmail API (Workspace) — Resend becomes fallback** |
 | `ac16dd9` | docs: update truck — Gmail API pivot operational |
 | `a0c119d` | **feat: draft-only cadence mode — Hub never auto-sends client emails** |
+| `83d7732` | docs: update truck — draft-only failsafe locked |
+| `ebd4a5a` | feat: surface cadence drafts on Hub home Awaiting You |
+| `3345682` | feat: expose cadence + enrollment tools via MCP (12 tools, total 32) |
+| `3dc7464` | feat: recent Gmail exchange on prospect detail (reply-context for drafts) |
+| `fc3944b` | feat: lead capture from Gmail inbox via hourly poll |
+| `3ebf96c` | **feat: dual-purpose Workspace OAuth — sending vs lead source** |
 
 ## Where things stand
 
@@ -54,12 +60,18 @@
 | `CRON_SECRET` in Vercel | ✓ Loaded (401 reject confirmed when called without it) |
 | Cron firing hourly | ✓ Live |
 | **Cadence email behavior** | **✓ Draft-only via Gmail API. Cron creates Gmail drafts in Collie's Drafts folder; she reviews + sends. Cron response confirms `mode: "draft_only"`, `has_workspace: true`, `workspace_email: collie@farleycreative.com`. Never auto-sends.** |
+| **Workspace OAuth (sending — Farley identity)** | ✓ Connected as `collie@farleycreative.com` |
+| **Workspace OAuth (reading_leads — PFV identity)** | ✓ Connected as `collie@palmfamilyventures.com` |
+| **Lead capture from inbox** | ✓ Cron polls Hub/Leads label every 30 min on PFV inbox; Claude parses (digests fan out to multiple leads); imports to `/pipeline/leads`. Requires Gmail filter at PFV inbox to label matching senders. |
+| **Recent Gmail exchange (prospect detail)** | ✓ Shows last ~10 messages with primary contact, with thread deeplinks |
 
 ### Architectural pivots mid-session (two)
 
 **Pivot 1 — Resend → Gmail API.** The cadence MVP was first shipped using Resend as the send channel. Winston correctly flagged that sends weren't appearing in Collie's actual inbox (Sent folder) and that we'd referenced Workspace integration multiple times during planning. The right architecture for low-volume operator-driven cadences is **Gmail API via Workspace OAuth** — sends land in the operator's Sent folder, replies thread natively, single inbox UX.
 
-**Pivot 2 — Auto-send → Draft-only.** After Gmail API was wired, Winston articulated the failsafe principle: "when speaking to clients and dealing with real money, we always have that failsafe." The Hub now NEVER auto-sends cadence emails. Cron creates Gmail drafts in Collie's Drafts folder; she reviews + sends each one from Gmail. Mirrors Sage's manual-after-draft pattern but with automated drafting. Resend stays in the codebase for purely transactional uses but is no longer a cadence channel; the cron explicitly does NOT fall back to it on Workspace disconnect (queues instead). Pivot shipped in commit `3f58b61`:
+**Pivot 2 — Auto-send → Draft-only.** After Gmail API was wired, Winston articulated the failsafe principle: "when speaking to clients and dealing with real money, we always have that failsafe." The Hub now NEVER auto-sends cadence emails. Cron creates Gmail drafts in Collie's Drafts folder; she reviews + sends each one from Gmail. Mirrors Sage's manual-after-draft pattern but with automated drafting. Resend stays in the codebase for purely transactional uses but is no longer a cadence channel; the cron explicitly does NOT fall back to it on Workspace disconnect (queues instead).
+
+**Pivot 3 — Single OAuth → Dual-purpose.** After lead capture shipped, Winston flagged that Collie's existing job alerts arrive at `collie@palmfamilyventures.com` (her PFV email she's been using), NOT at the new Farley identity. Forwarding all PFV mail to Farley was rejected — would clutter the studio identity inbox. Architecture pivot: Hub now supports TWO Workspace OAuth connections, tagged by purpose. `sending` = Farley (cadence drafts + sends originate here). `reading_leads` = PFV (lead-poll reads here, never sends). Schema: `workspace_connections.purpose` column with unique-index-per-purpose. UI: `/settings/workspace` shows two connection slots, each Connect/Disconnect independently. Mailboxes stay where they naturally are; no forwarding needed. Pivot shipped in commit `3f58b61`:
 
 - New schema: `workspace_connections` table for OAuth tokens; `prospect_sends.send_via` column for per-send channel tracking
 - New code: `src/lib/gmail/oauth.ts` (authorize/exchange/refresh/userinfo), `src/lib/gmail/send.ts` (sendViaGmail with auto-refresh), `src/lib/db/workspace-connections.ts` (connection CRUD)
