@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "migrate": "node --import tsx scripts/migrate.ts"
+    "migrate": "node --import tsx scripts/migrate.ts",
+    "seed-demo": "node --import tsx scripts/seed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
