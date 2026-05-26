@@ -74,7 +74,7 @@ function kindGuidance(kind: DraftKind): string {
   }
 }
 
-function buildBrandSystemBlock(brand: BrandKit, voice?: VoiceProfile | null): string {
+export function buildBrandSystemBlock(brand: BrandKit, voice?: VoiceProfile | null): string {
   // When a voice profile is supplied, voice-related fields come from it
   // and override the brand kit. Brand kit still provides bio, palette,
   // positioning, brand book notes, links — the "what" while voice is "how".

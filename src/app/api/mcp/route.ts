@@ -111,6 +111,9 @@ import {
 import { listShippingProfiles } from "@/lib/etsy/shop";
 import { searchTaxonomy } from "@/lib/etsy/taxonomy";
 import { getActiveConnection } from "@/lib/db/etsy";
+import { draftFirstTouch } from "@/lib/ai/first-touch";
+import { createGmailDraft } from "@/lib/gmail/send";
+import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
   "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
@@ -1328,6 +1331,90 @@ const TOOLS: ToolDef[] = [
         50,
       );
       return searchTaxonomy(args.q as string, limit);
+    },
+  },
+  {
+    name: "draft_first_touch_for_lead",
+    description:
+      "Draft a custom first-touch email for a job-board lead and land it in Workspace Gmail Drafts. Reads the full JD (hybrid URL fetch + stored content + operator paste), dissects role/constraint/lever per the composition-templates/job-board-first-touch.md frameworks, composes the email in Collie's voice, and creates the Gmail draft for her review. Stamps the lead with first_touch_* tracking. Does NOT auto-promote to prospect — operator does that explicitly. Returns analysis + subject + body + gmail draft link.",
+    inputSchema: {
+      type: "object",
+      required: ["lead_id"],
+      properties: {
+        lead_id: { type: "integer" },
+        operator_pasted: {
+          type: "string",
+          description:
+            "Optional. Pre-pasted full JD content. Overrides URL fetch + stored raw_content. Use when both are thin/inaccessible (e.g., LinkedIn postings).",
+        },
+      },
+    },
+    handler: async (args) => {
+      const leadId = args.lead_id as number;
+      const lead = await getLead(leadId);
+      if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+      const workspace = await getConnectionByPurpose("sending");
+      if (!workspace) {
+        throw new Error(
+          "No Workspace 'sending' connection. Connect at /settings/workspace first.",
+        );
+      }
+
+      const brand = await getStudioKit();
+      const voice = await getDefaultVoiceProfile();
+
+      const drafted = await draftFirstTouch({
+        lead,
+        brand,
+        voice,
+        operator_pasted: typeof args.operator_pasted === "string"
+          ? (args.operator_pasted as string)
+          : undefined,
+      });
+
+      const emailMatch = drafted.raw_content_used.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      const recipient =
+        emailMatch && !/noreply|no-reply|donotreply/i.test(emailMatch[0])
+          ? emailMatch[0]
+          : "";
+
+      const gmailDraft = await createGmailDraft({
+        to: recipient,
+        subject: drafted.subject,
+        text: drafted.body,
+      });
+
+      const noteLine = `[first-touch drafted ${new Date().toISOString().slice(0, 10)}] ${drafted.subject} (gmail draft ${gmailDraft.draftId}; JD via ${drafted.source.origin})`;
+      const newNotes = lead.notes.trim()
+        ? `${lead.notes.trim()}\n\n${noteLine}`
+        : noteLine;
+
+      await query(
+        `UPDATE leads
+            SET first_touch_drafted_at = NOW(),
+                first_touch_gmail_draft_id = $1,
+                first_touch_subject = $2,
+                first_touch_jd_source = $3,
+                notes = $4,
+                updated_at = NOW()
+          WHERE id = $5`,
+        [gmailDraft.draftId, drafted.subject, drafted.source.origin, newNotes, leadId],
+      );
+
+      return {
+        lead_id: leadId,
+        analysis: drafted.analysis,
+        subject: drafted.subject,
+        body: drafted.body,
+        recipient_guess: recipient || null,
+        gmail: {
+          draftId: gmailDraft.draftId,
+          gmailUrl: `https://mail.google.com/mail/u/${encodeURIComponent(workspace.email)}/#drafts?compose=${gmailDraft.draftId}`,
+          sender: workspace.email,
+        },
+        source: drafted.source,
+      };
     },
   },
   {

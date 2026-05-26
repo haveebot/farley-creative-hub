@@ -214,6 +214,12 @@ CREATE INDEX IF NOT EXISTS leads_source_type_idx ON leads (source_type);
 CREATE INDEX IF NOT EXISTS leads_state_idx ON leads (state);
 CREATE INDEX IF NOT EXISTS leads_created_at_idx ON leads (created_at DESC);
 
+-- First-touch outreach tracking (added 2026-05-26)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_drafted_at TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_gmail_draft_id TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_subject TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_jd_source TEXT;
+
 -- ============ etsy_connections ============
 CREATE TABLE IF NOT EXISTS etsy_connections (
   id              SERIAL PRIMARY KEY,

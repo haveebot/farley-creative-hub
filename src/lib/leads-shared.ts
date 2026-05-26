@@ -64,6 +64,10 @@ export type Lead = {
   notes: string;
   status: LeadStatus;
   converted_to_prospect_id: number | null;
+  first_touch_drafted_at: Date | null;
+  first_touch_gmail_draft_id: string | null;
+  first_touch_subject: string | null;
+  first_touch_jd_source: string | null;
   found_by: string;
   created_at: Date;
   updated_at: Date;

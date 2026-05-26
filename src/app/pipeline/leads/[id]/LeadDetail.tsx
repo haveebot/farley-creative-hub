@@ -22,12 +22,25 @@ import {
 } from "@/lib/pipeline-shared";
 
 type ConvertStatus = "idle" | "converting" | "error";
+type FirstTouchStatus = "idle" | "drafting" | "drafted" | "error";
+
+type FirstTouchResult = {
+  analysis: { role: string; constraint: string; lever: string };
+  subject: string;
+  body: string;
+  recipient_guess: string | null;
+  gmail: { draftId: string; gmailUrl: string; sender: string };
+  source: { origin: string; chars: number; fetch_failed?: boolean };
+};
 
 export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const router = useRouter();
   const [lead, setLead] = useState(initialLead);
   const [convertStatus, setConvertStatus] = useState<ConvertStatus>("idle");
   const [convertError, setConvertError] = useState<string | null>(null);
+  const [firstTouchStatus, setFirstTouchStatus] = useState<FirstTouchStatus>("idle");
+  const [firstTouchError, setFirstTouchError] = useState<string | null>(null);
+  const [firstTouchResult, setFirstTouchResult] = useState<FirstTouchResult | null>(null);
 
   async function update(updates: Partial<Lead>) {
     const res = await fetch(`/api/leads/${lead.id}`, {
@@ -79,8 +92,38 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
     if (res.ok) router.push("/pipeline/leads");
   }
 
+  async function handleFirstTouch() {
+    setFirstTouchStatus("drafting");
+    setFirstTouchError(null);
+    setFirstTouchResult(null);
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/draft-first-touch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setFirstTouchError(data.message ?? data.error ?? "Draft failed.");
+        setFirstTouchStatus("error");
+        return;
+      }
+      setFirstTouchResult(data);
+      setFirstTouchStatus("drafted");
+      if (data.lead) setLead(data.lead);
+      router.refresh();
+    } catch (err) {
+      setFirstTouchError((err as Error).message);
+      setFirstTouchStatus("error");
+    }
+  }
+
   const alreadyConverted = lead.status === "converted" && lead.converted_to_prospect_id;
   const contentIsThin = (lead.raw_content?.length ?? 0) < 600;
+  const alreadyDrafted = !!lead.first_touch_gmail_draft_id;
+  const gmailDraftUrl = alreadyDrafted && firstTouchResult?.gmail.gmailUrl
+    ? firstTouchResult.gmail.gmailUrl
+    : null;
 
   return (
     <div className="space-y-6">
@@ -102,11 +145,26 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
             Source: {LEAD_SOURCE_LABELS[lead.source_type]}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {!alreadyConverted && (
+            <button
+              type="button"
+              onClick={handleFirstTouch}
+              disabled={firstTouchStatus === "drafting"}
+              className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+              title="Generate a custom first-touch email from the JD + drop it in Gmail Drafts for review"
+            >
+              {firstTouchStatus === "drafting"
+                ? "Drafting…"
+                : alreadyDrafted
+                  ? "Re-draft first-touch"
+                  : "Draft first-touch"}
+            </button>
+          )}
           {alreadyConverted ? (
             <a
               href={`/pipeline/${lead.converted_to_prospect_id}`}
-              className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition"
+              className="px-4 py-2 border border-accent text-accent rounded-md text-sm font-medium hover:bg-accent hover:text-white transition"
             >
               Open prospect →
             </a>
@@ -115,7 +173,7 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
               type="button"
               onClick={handleConvert}
               disabled={convertStatus === "converting"}
-              className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+              className="px-4 py-2 border border-accent text-accent rounded-md text-sm font-medium hover:bg-accent hover:text-white transition disabled:opacity-50"
             >
               {convertStatus === "converting" ? "Converting…" : "Convert to prospect"}
             </button>
@@ -131,6 +189,81 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
       </section>
       {convertError && (
         <p className="text-sm text-red-600 -mt-3">{convertError}</p>
+      )}
+      {firstTouchError && (
+        <p className="text-sm text-red-600 -mt-3">First-touch: {firstTouchError}</p>
+      )}
+
+      {/* FIRST-TOUCH RESULT — shows after a successful draft, or
+          quick state if the lead was drafted in a prior session. */}
+      {(firstTouchResult || alreadyDrafted) && (
+        <section className="p-5 border-2 border-green-500/30 rounded-lg bg-green-500/5 space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-green-700 dark:text-green-400 mb-1">
+                First-touch drafted ✓
+              </p>
+              <p className="text-base font-medium">
+                {firstTouchResult?.subject ?? lead.first_touch_subject ?? "(draft created)"}
+              </p>
+              {lead.first_touch_drafted_at && (
+                <p className="text-xs text-muted mt-1">
+                  Drafted {new Date(lead.first_touch_drafted_at).toLocaleString()} · JD via{" "}
+                  {firstTouchResult?.source.origin ?? lead.first_touch_jd_source ?? "unknown"}
+                </p>
+              )}
+            </div>
+            {(gmailDraftUrl ?? lead.first_touch_gmail_draft_id) && (
+              <a
+                href={
+                  gmailDraftUrl ??
+                  `https://mail.google.com/mail/u/0/#drafts?compose=${lead.first_touch_gmail_draft_id}`
+                }
+                target="_blank"
+                rel="noreferrer noopener"
+                className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0 inline-flex items-center gap-2"
+              >
+                Review in Gmail Drafts <span aria-hidden="true">↗</span>
+              </a>
+            )}
+          </div>
+          {firstTouchResult && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div className="p-3 bg-surface rounded border border-border">
+                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Role read</p>
+                  <p className="text-foreground/90">{firstTouchResult.analysis.role}</p>
+                </div>
+                <div className="p-3 bg-surface rounded border border-border">
+                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Constraint</p>
+                  <p className="text-foreground/90">{firstTouchResult.analysis.constraint}</p>
+                </div>
+                <div className="p-3 bg-surface rounded border border-border">
+                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Lever</p>
+                  <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
+                </div>
+              </div>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-xs text-muted hover:text-foreground">
+                  Show body preview
+                </summary>
+                <pre className="mt-3 p-4 bg-surface rounded border border-border whitespace-pre-wrap font-sans text-sm">
+                  {firstTouchResult.body}
+                </pre>
+              </details>
+              {firstTouchResult.recipient_guess ? (
+                <p className="text-xs text-muted">
+                  Recipient auto-filled from JD: <code>{firstTouchResult.recipient_guess}</code>.
+                  Verify in Gmail before sending.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  ⚠ No recipient email found in the JD — fill in the To: field in Gmail before sending.
+                </p>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {/* PROMINENT SOURCE — at the top, where the eye lands first */}
