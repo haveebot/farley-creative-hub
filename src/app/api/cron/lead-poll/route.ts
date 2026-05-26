@@ -121,7 +121,7 @@ export async function GET(request: Request) {
         try {
           await createLead({
             source_type: inferSourceType(msg.from, msg.subject),
-            source_url: null,
+            source_url: lead.source_url ?? null,
             source_title: lead.source_title ?? msg.subject,
             business_name: lead.business_name,
             city: lead.city,

@@ -82,6 +82,9 @@ export async function POST(
   if (!lead.source_title && parsed.source_title) {
     updates.source_title = parsed.source_title;
   }
+  if (!lead.source_url && parsed.source_url) {
+    updates.source_url = parsed.source_url;
+  }
   if (!lead.city && parsed.city) updates.city = parsed.city;
   if (!lead.state && parsed.state) updates.state = parsed.state;
   if (

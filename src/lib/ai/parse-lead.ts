@@ -22,6 +22,7 @@ function getClient(): Anthropic {
 export type ParsedLead = {
   business_name: string | null;
   source_title: string | null;
+  source_url: string | null;
   city: string | null;
   state: string | null;
   industry: string | null;
@@ -75,6 +76,7 @@ Return ONLY a JSON object with these exact keys:
 {
   "business_name": string | null,
   "source_title": string | null,
+  "source_url": string | null,  // The canonical URL to the original posting / article / item, if one is present in the source text. For job postings, this is the apply/view URL (Indeed /viewjob, LinkedIn /jobs/view, AngelList /jobs/<id>). NEVER use unsubscribe / settings / preferences URLs. Return null if no canonical URL is in the source.
   "city": string | null,
   "state": string | null,  // 2-letter US code
   "industry": "food_beverage" | "retail" | "professional_services" | "health_wellness" | "arts_creative" | "technology" | "hospitality" | "nonprofit" | "other" | null,
@@ -127,6 +129,10 @@ export async function parseLead(rawText: string): Promise<ParsedLead> {
   return {
     business_name: typeof parsed.business_name === "string" ? parsed.business_name : null,
     source_title: typeof parsed.source_title === "string" ? parsed.source_title : null,
+    source_url:
+      typeof parsed.source_url === "string" && parsed.source_url.trim()
+        ? parsed.source_url.trim()
+        : null,
     city: typeof parsed.city === "string" ? parsed.city : null,
     state: typeof parsed.state === "string" ? parsed.state.toUpperCase() : null,
     industry: typeof parsed.industry === "string" ? parsed.industry : null,
@@ -154,6 +160,7 @@ Output ONLY a JSON array (no markdown fences, no surrounding text), where each i
 {
   "business_name": string | null,
   "source_title": string | null,
+  "source_url": string | null,  // The DIRECT LINK to this specific posting / item. For digest emails, every posting links somewhere — find that URL. Look for the "View job" / "Apply now" / "Read more" / "See posting" link nearest the posting body. Strip Indeed/LinkedIn/Google tracking parameters when safe; the canonical landing URL is what matters. NEVER use the digest email's own unsubscribe / settings / preferences URLs.
   "city": string | null,
   "state": string | null,
   "industry": "food_beverage" | "retail" | "professional_services" | "health_wellness" | "arts_creative" | "technology" | "hospitality" | "nonprofit" | "other" | null,
@@ -166,6 +173,7 @@ Output ONLY a JSON array (no markdown fences, no surrounding text), where each i
 Rules:
 - For digests: each posting becomes its own item. Don't merge similar-looking postings.
 - For empty input or non-lead emails: return [].
+- source_url: CRITICAL — every digest posting has a "view this posting" link nearby. Find it and include the canonical URL. Indeed digests use /viewjob? URLs; LinkedIn uses /jobs/view/; AngelList uses /jobs/<id>; etc. If you genuinely can't find a URL for this specific posting, return null — don't make one up.
 - service_signal: same vocab as before — subset of ["brand_identity", "web_design", "marketing", "strategy", "packaging", "social_media", "content", "other"]. Only include services the source actually signals.
 - summary: 1-2 sentence outreach angle, not just facts.
 - Skip "boosted" / "promoted" / "sponsored" entries in digests unless they're substantive.
@@ -225,6 +233,7 @@ export async function parseDigest(rawText: string): Promise<DigestParseResult[]>
   return (parsed as Array<Record<string, unknown>>).map((item) => ({
     business_name: typeof item.business_name === "string" ? item.business_name : null,
     source_title: typeof item.source_title === "string" ? item.source_title : null,
+    source_url: typeof item.source_url === "string" && item.source_url.trim() ? item.source_url.trim() : null,
     city: typeof item.city === "string" ? item.city : null,
     state: typeof item.state === "string" ? item.state.toUpperCase() : null,
     industry: typeof item.industry === "string" ? item.industry : null,
