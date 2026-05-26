@@ -172,21 +172,19 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
           </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {!alreadyConverted && (
-            <button
-              type="button"
-              onClick={handleFirstTouch}
-              disabled={firstTouchStatus === "drafting"}
-              className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-              title="Generate a custom first-touch email from the JD + drop it in Gmail Drafts for review"
-            >
-              {firstTouchStatus === "drafting"
-                ? "Drafting…"
-                : alreadyDrafted
-                  ? "Re-draft first-touch"
-                  : "Draft first-touch"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleFirstTouch}
+            disabled={firstTouchStatus === "drafting"}
+            className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+            title="Generate a custom first-touch email from the JD — auto-promotes lead to prospect on first run; subsequent runs re-draft with the latest brand voice + roster"
+          >
+            {firstTouchStatus === "drafting"
+              ? "Preparing…"
+              : alreadyDrafted
+                ? "Re-draft first-touch"
+                : "Draft first-touch"}
+          </button>
           {alreadyConverted ? (
             <a
               href={`/pipeline/${lead.converted_to_prospect_id}`}
