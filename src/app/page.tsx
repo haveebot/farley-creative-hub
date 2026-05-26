@@ -21,6 +21,7 @@ import DailyBriefing from "./DailyBriefing";
 import Greeting from "./Greeting";
 import PipelineFunnel from "./PipelineFunnel";
 import TopNav from "./TopNav";
+import VoiceCard from "./VoiceCard";
 import WebTrafficCard from "./WebTrafficCard";
 
 export const dynamic = "force-dynamic";
@@ -300,7 +301,8 @@ export default async function Home() {
           </section>
         )}
 
-        <section className="max-w-5xl mx-auto mt-10">
+        <section className="max-w-5xl mx-auto mt-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <VoiceCard />
           <WebTrafficCard />
         </section>
 

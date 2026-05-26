@@ -92,6 +92,16 @@ import {
 } from "@/lib/db/enrollments";
 import { ENROLLMENT_STATUSES, type EnrollmentStatus } from "@/lib/cadences-shared";
 import { query } from "@/lib/db/client";
+import {
+  createVoiceProfile,
+  deleteVoiceProfile,
+  getDefaultVoiceProfile,
+  getVoiceProfile,
+  listVoiceProfiles,
+  updateVoiceProfile,
+} from "@/lib/db/voice-profiles";
+import { extractVoiceFromSamples } from "@/lib/ai/voice-extractor";
+import { gatherExistingWriting } from "@/lib/db/voice-profiles";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
   "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
@@ -965,6 +975,169 @@ const TOOLS: ToolDef[] = [
     handler: async (args) => {
       const limit = typeof args.limit === "number" ? args.limit : 20;
       return { drafted_sends: await listDraftedSends(limit) };
+    },
+  },
+
+  // ============ Voice profiles ============
+  {
+    name: "list_voice_profiles",
+    description:
+      "List all voice profiles. A voice profile is a reusable 'how to sound' — independent of any visual brand kit. Drafts use a voice profile to apply tone, vocabulary, and audience awareness. Returns name, description, sample sizes, and which one is marked default.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => ({ profiles: await listVoiceProfiles() }),
+  },
+  {
+    name: "get_voice_profile",
+    description:
+      "Read a voice profile by id. Returns all fields including writing samples (which may be long).",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "integer" } },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      const profile = await getVoiceProfile(id);
+      if (!profile) throw new Error(`voice_profile id ${id} not found`);
+      return profile;
+    },
+  },
+  {
+    name: "get_default_voice_profile",
+    description:
+      "Read the voice profile marked as default — the one used for drafts that don't specify a voice_profile_id explicitly. Returns null if no default is set.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => {
+      const profile = await getDefaultVoiceProfile();
+      return profile ?? null;
+    },
+  },
+  {
+    name: "create_voice_profile",
+    description:
+      "Create a new voice profile. Provide name (required) plus any of voice_notes, writing_samples, always_say, never_say, audience_persona, description, is_default. Returns the new profile. Use generate_voice_profile first if you want AI to extract these fields from samples.",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        voice_notes: { type: "string" },
+        writing_samples: { type: "string" },
+        always_say: { type: "array", items: { type: "string" } },
+        never_say: { type: "array", items: { type: "string" } },
+        audience_persona: { type: "string" },
+        is_default: { type: "boolean" },
+      },
+    },
+    handler: async (args) => {
+      const name = typeof args.name === "string" ? args.name : "";
+      if (!name.trim()) throw new Error("name required");
+      return createVoiceProfile({
+        name,
+        description: typeof args.description === "string" ? args.description : undefined,
+        voice_notes: typeof args.voice_notes === "string" ? args.voice_notes : undefined,
+        writing_samples:
+          typeof args.writing_samples === "string" ? args.writing_samples : undefined,
+        always_say: Array.isArray(args.always_say)
+          ? (args.always_say as unknown[]).filter(
+              (s): s is string => typeof s === "string",
+            )
+          : undefined,
+        never_say: Array.isArray(args.never_say)
+          ? (args.never_say as unknown[]).filter(
+              (s): s is string => typeof s === "string",
+            )
+          : undefined,
+        audience_persona:
+          typeof args.audience_persona === "string" ? args.audience_persona : undefined,
+        is_default: args.is_default === true,
+      });
+    },
+  },
+  {
+    name: "update_voice_profile",
+    description:
+      "Update an existing voice profile. Provide id (required) plus any fields to update. Returns the updated profile. Setting is_default: true automatically unsets the previous default.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "integer" },
+        name: { type: "string" },
+        description: { type: "string" },
+        voice_notes: { type: "string" },
+        writing_samples: { type: "string" },
+        always_say: { type: "array", items: { type: "string" } },
+        never_say: { type: "array", items: { type: "string" } },
+        audience_persona: { type: "string" },
+        is_default: { type: "boolean" },
+      },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      const { id: _, ...updates } = args as Record<string, unknown>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return updateVoiceProfile(id, updates as any);
+    },
+  },
+  {
+    name: "delete_voice_profile",
+    description:
+      "Delete a voice profile. Drafts that referenced it will have their voice_profile_id set to null (the FK is ON DELETE SET NULL). Use sparingly.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "integer" } },
+    },
+    handler: async (args) => {
+      const id = args.id;
+      if (typeof id !== "number") throw new Error("id required");
+      await deleteVoiceProfile(id);
+      return { ok: true, deleted_id: id };
+    },
+  },
+  {
+    name: "generate_voice_profile",
+    description:
+      "Analyze writing samples and extract voice fields (notes, always_say, never_say, audience_persona). Does NOT save — returns the extracted fields for the caller to review + then pass to create_voice_profile. Provide either samples (pasted text), fromExisting:true (pulls Hub content), or both.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        samples: { type: "string", description: "Pasted writing samples to analyze." },
+        fromExisting: {
+          type: "boolean",
+          description:
+            "If true, also pulls existing Hub content (drafts + Etsy listings + pipeline notes) into the analysis.",
+        },
+        sources: {
+          type: "array",
+          items: { type: "string", enum: ["drafts", "listings", "pipeline"] },
+          description: "Which Hub content sources to include when fromExisting is true.",
+        },
+      },
+    },
+    handler: async (args) => {
+      let samples = typeof args.samples === "string" ? args.samples : "";
+      const sourceCounts: Record<string, number> = {};
+      if (args.fromExisting === true) {
+        const sources = Array.isArray(args.sources)
+          ? (args.sources as unknown[]).filter(
+              (s): s is "drafts" | "listings" | "pipeline" =>
+                s === "drafts" || s === "listings" || s === "pipeline",
+            )
+          : undefined;
+        const gathered = await gatherExistingWriting({ sources });
+        samples = samples ? `${samples}\n\n${gathered.samples}` : gathered.samples;
+        Object.assign(sourceCounts, gathered.sources);
+      }
+      if (!samples || samples.length < 100) {
+        throw new Error("Need at least ~100 chars of writing to analyze");
+      }
+      const extracted = await extractVoiceFromSamples(samples);
+      return { extracted, source_counts: sourceCounts, sample_length: samples.length };
     },
   },
 ];
