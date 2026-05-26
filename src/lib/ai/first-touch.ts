@@ -174,11 +174,20 @@ function buildLeadContextBlock(lead: Lead, content: string): string {
  *   Body:
  *   <body content>
  */
+/** Strip stray markdown code-fence artifacts Claude sometimes emits. */
+function stripCodeFences(text: string): string {
+  return text
+    .replace(/^```[\w-]*\s*\n/, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
+}
+
 function parseOutput(raw: string): {
   analysis: { role: string; constraint: string; lever: string };
   subject: string;
   body: string;
 } {
+  raw = stripCodeFences(raw);
   const roleMatch = raw.match(/^\s*Role:\s*(.+)$/m);
   const constraintMatch = raw.match(/^\s*Constraint:\s*(.+)$/m);
   const leverMatch = raw.match(/^\s*Lever:\s*(.+)$/m);
@@ -196,7 +205,9 @@ function parseOutput(raw: string): {
   }
 
   const subject = subjectMatch[1].trim();
-  const body = raw.slice(bodyIdx).replace(/^Body:\s*/m, "").trim();
+  const body = stripCodeFences(
+    raw.slice(bodyIdx).replace(/^Body:\s*/m, "").trim(),
+  );
   return { analysis, subject, body };
 }
 
