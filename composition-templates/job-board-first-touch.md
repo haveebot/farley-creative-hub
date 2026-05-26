@@ -30,65 +30,85 @@ The requirement is what they listed. The constraint is what's actually broken. "
 **3. Find the implicit deadline.**
 "Immediate start" / "ASAP" / "Q2 priority" / Reposting same JD = pain is now. First-touch tone should match their urgency.
 
-## Open (the first 2 sentences)
+## Open (the first 3 sentences)
 
-**4. Acknowledge their post specifically, by their language.**
+**4. Lead with a 1-line personal intro — greeting + name + role.**
+These are cold emails to people who don't know Farley exists. Establish identity in one short sentence before the pitch. Pattern:
+> "Good morning [Company name] team — Collie at Farley Creative here."
+> "Hi [Company name] team — this is Collie from Farley Creative."
+Match the time of day (good morning / afternoon / evening) if you know it; otherwise use a neutral "Hi". This is NOT throat-clearing — it's the politeness that makes the rest land. Sage's validated outreach pattern. Always include it.
+
+**5. Then acknowledge their post specifically, by their language.**
 If they wrote "Marketing Director with paid social and email automation experience," you write back "your Marketing Director role — paid social + email automation." Their words, not ours. Demonstrates you actually read it.
 
-**5. Never open with "I just wanted to reach out…" or any throat-clearing.**
-First sentence is acknowledgment. Second is the angle. No preamble.
+**6. Never use vague throat-clearing like "I just wanted to reach out about a great opportunity…"**
+That's noise. The personal intro in #4 is the legitimate version; "wanted to reach out about an opportunity" is the form-letter version. Don't conflate them.
 
-**6. No fluff, no flattery.**
+**7. No fluff, no flattery.**
 "Great company!" / "Love what you're doing!" = noise that signals form letter. Skip.
+
+**8. If they have a named brand methodology, acknowledge it by name.**
+Mediassociates has "Precision Branding." A SaaS company might have "Outcome-First Marketing." A consultancy might have "The Five Pillars." If the JD names a methodology, reference it by name and tie it to a Farley capability. Shows real read. Skip if no methodology is named — don't fabricate one.
 
 ## Frame (the middle — where the pitch lives)
 
-**7. Position as alternative, not replacement.**
+**9. Position as alternative, not replacement.**
 Two paths, both viable, no high-pressure. From Collie's IMG_3035 cold email formula:
 > "We can manage this as a temporary bridge while you source the perfect candidate, OR handle it completely with a monthly retainer."
 
 This is Reserve over Remove (from Sage contract principles, applied to sales). Don't pre-narrow.
 
-**8. Map the gap to one specific lever — not the catalog.**
+**10. Map the gap to one specific lever — not the catalog.**
 Don't list "branding, social, web, strategy." Pick the ONE thing in their JD that maps to our strongest capability and lead with that. Catalog = noise; one sharp lever = trust.
 
-**9. Founder-operator empathy is the trust lever.**
+**11. Founder-operator empathy is the trust lever.**
 "We've been on the other side of this hire — built teams, written the JD, signed the offer letter." That's the line that separates Farley from every other agency cold email. Use sparingly (once per email, max).
 
-**10. Show don't tell — one receipt link, not a portfolio.**
-"Similar to the brand-and-marketing system we built for [Cinnamon Shore / Sage Em / Port A Local]." One specific link if the parallel is strong. Never "see our portfolio."
+**12. Show don't tell — one receipt with real outcome numbers when available.**
+Lead with the OUTCOME ("62% revenue lift on PALMFEST") not the project name alone. See CASE STUDIES section in the brand kit for the full receipt set.
 
-**11. Speak to their quote, not their company.**
+**13. Receipt selection is prospect-type-aware. Pick the parallel that lands.**
+- **Prospect is another AGENCY (media, creative, marketing, ad)** → use **Sage Em** (B2B agency operating system) OR **CrossRef** (multi-tenant data platform). Agencies respect agency-operations work over festival metrics.
+- **Prospect is hospitality / restaurant / venue / experience** → use **Palm Social Club** OR **Cinnamon Shore**.
+- **Prospect is event / festival / experiential / launch** → use **PALMFEST** (62% revenue lift, 76% attendance growth).
+- **Prospect is real estate / property / luxury hospitality** → use **Cinnamon Shore** (37% revenue lift, 224% call volume) OR **RK Projects**.
+- **Prospect is retail / lifestyle / product brand** → use **Palm Republic**.
+- **Prospect is hyperlocal / community / multi-tenant SaaS / platform** → use **Port A Local** OR **CrossRef**.
+- **No strong parallel** → use **Sage Em** operating-system framing rather than forcing a bad fit.
+
+When picking, prioritize parallel-strength over outcome-flash. A receipt with no numbers but tight parallel beats a flashy-but-mismatched receipt every time.
+
+**14. Speak to their quote, not their company.**
 Sage contract principle in sales form: address what they wrote in the JD, not what we assume about their business. If they said the role needs paid social, talk about paid social — even if we'd push them to organic first. Save the strategic reframe for the call.
 
 ## Ask (the close — soft, specific, one ask only)
 
-**12. Soft 1-call ask, narrow time window.**
+**15. Soft 1-call ask, narrow time window.**
 "Open to a 20-min call this week or next?" — not "schedule via calendly" / "let's connect" / "would love to chat." Specific window, low commitment, single ask.
 
-**13. One ask per email. Never two.**
+**16. One ask per email. Never two.**
 Don't combine "20-min call OR reply with budget OR review the deck." Pick the one ask.
 
 ## Skip (anything that lands in the trash)
 
-**14. Never quote price in first touch.**
+**17. Never quote price in first touch.**
 Price belongs on the call. Quoting in first-touch prematurely narrows scope and removes value-discovery.
 
-**15. Never attach a deck or PDF in first-touch.**
+**18. Never attach a deck or PDF in first-touch.**
 Attachments trip spam filters and signal "form letter." One inline receipt link maximum.
 
-**16. Never use "synergy," "leverage," "circle back," "touch base."**
+**19. Never use "synergy," "leverage," "circle back," "touch base."**
 Agency-speak triggers their immune system. Use plain English.
 
-**17. No more than 3 paragraphs total.**
-Hiring managers skim. Structure: acknowledgment (1-2 sentences) → angle + receipt (2-3 sentences) → ask (1 sentence). Under 100 words total when possible.
+**20. Keep it tight — ~4 short paragraphs, under 130 words.**
+Hiring managers skim. Structure: greeting + intro (1 sentence) → acknowledgment + constraint (1-2 sentences) → alternative-frame + receipt (2-3 sentences) → ask (1 sentence).
 
 ## Voice anchors
 
-**18. Sign as Collie, not as "Farley Creative."**
+**21. Sign as Collie, not as "Farley Creative."**
 Humans buy from humans. Personal sign-off lands; entity sign-off feels like a campaign.
 
-**19. Subject line references THEIR role, not OUR services.**
+**22. Subject line references THEIR role, not OUR services.**
 "Re: [their role title] — alternative path" / "Saw your [role] posting" / "[Role] — bridge or retainer?" — never "Marketing services for [Company]."
 
 ---
@@ -98,11 +118,13 @@ Humans buy from humans. Personal sign-off lands; entity sign-off feels like a ca
 ```
 Subject: [Reference their specific role]
 
-[Acknowledgment in their language — 1 sentence]
-[Implicit constraint you spotted, named gently — 1 sentence]
+[Greeting + personal intro — 1 sentence: "Good {morning|afternoon} {Company} team — Collie at Farley Creative here."]
+[Acknowledgment of their post in their language + constraint you spotted — 1-2 sentences]
+[Acknowledge their named methodology if they have one, by name — 1 sentence; skip if no methodology named]
 
-[Alternative-frame: bridge OR retainer — 2 sentences]
-[Receipt: one specific parallel piece of work — 1 sentence]
+[Alternative-frame: bridge OR retainer — 1-2 sentences]
+[Founder-operator empathy line — 1 sentence: "We've been on the other side of that hire — built teams, written the JD, signed offer letters."]
+[Receipt: one parallel case study with outcome numbers if available — 1 sentence; pick per Principle 13]
 
 [Soft 1-call ask with narrow window — 1 sentence]
 

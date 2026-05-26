@@ -31,6 +31,7 @@ type FirstTouchResult = {
   recipient_guess: string | null;
   gmail: { draftId: string; gmailUrl: string; sender: string };
   source: { origin: string; chars: number; fetch_failed?: boolean };
+  prospect: { id: number; was_already_converted: boolean; name: string; url: string } | null;
 };
 
 export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
@@ -213,19 +214,29 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                 </p>
               )}
             </div>
-            {(gmailDraftUrl ?? lead.first_touch_gmail_draft_id) && (
-              <a
-                href={
-                  gmailDraftUrl ??
-                  `https://mail.google.com/mail/u/0/#drafts?compose=${lead.first_touch_gmail_draft_id}`
-                }
-                target="_blank"
-                rel="noreferrer noopener"
-                className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0 inline-flex items-center gap-2"
-              >
-                Review in Gmail Drafts <span aria-hidden="true">↗</span>
-              </a>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {firstTouchResult?.prospect && (
+                <a
+                  href={firstTouchResult.prospect.url}
+                  className="px-4 py-2.5 border border-green-600 text-green-700 dark:text-green-400 rounded-md text-sm font-medium hover:bg-green-600 hover:text-white transition inline-flex items-center gap-2"
+                >
+                  Open prospect →
+                </a>
+              )}
+              {(gmailDraftUrl ?? lead.first_touch_gmail_draft_id) && (
+                <a
+                  href={
+                    gmailDraftUrl ??
+                    `https://mail.google.com/mail/u/0/#drafts?compose=${lead.first_touch_gmail_draft_id}`
+                  }
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition inline-flex items-center gap-2"
+                >
+                  Review in Gmail Drafts <span aria-hidden="true">↗</span>
+                </a>
+              )}
+            </div>
           </div>
           {firstTouchResult && (
             <>
