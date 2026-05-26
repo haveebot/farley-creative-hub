@@ -147,3 +147,52 @@ export async function listShopListings(
 export async function deleteListing(listingId: number): Promise<void> {
   await etsyFetch(`/application/listings/${listingId}`, { method: "DELETE" });
 }
+
+export type UpdateListingInput = {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  materials?: string[];
+  price?: number;
+  quantity?: number;
+  state?: "active" | "inactive" | "draft";
+  should_auto_renew?: boolean;
+};
+
+/**
+ * Update an existing listing. Highest-leverage field for organic Etsy
+ * traffic is `tags` (max 13). state="active" republishes a draft;
+ * state="inactive" hides a listing without deleting it.
+ *
+ * Etsy's update endpoint is `PATCH /v3/application/shops/{shop_id}/listings/{listing_id}`
+ * and accepts application/x-www-form-urlencoded. Arrays serialize as
+ * comma-joined strings (tags, materials).
+ */
+export async function updateListing(
+  listingId: number,
+  input: UpdateListingInput,
+): Promise<EtsyListing> {
+  const shopId = await requireShopId();
+  const form = new URLSearchParams();
+  if (input.title !== undefined) form.set("title", input.title);
+  if (input.description !== undefined) form.set("description", input.description);
+  if (input.tags !== undefined) form.set("tags", input.tags.slice(0, 13).join(","));
+  if (input.materials !== undefined) form.set("materials", input.materials.slice(0, 13).join(","));
+  if (input.price !== undefined) form.set("price", input.price.toFixed(2));
+  if (input.quantity !== undefined) form.set("quantity", String(input.quantity));
+  if (input.state !== undefined) form.set("state", input.state);
+  if (input.should_auto_renew !== undefined) {
+    form.set("should_auto_renew", input.should_auto_renew ? "true" : "false");
+  }
+  if (form.toString() === "") {
+    throw new Error("updateListing called with no fields to update");
+  }
+  return etsyFetch<EtsyListing>(
+    `/application/shops/${shopId}/listings/${listingId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    },
+  );
+}

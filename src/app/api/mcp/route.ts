@@ -102,6 +102,15 @@ import {
 } from "@/lib/db/voice-profiles";
 import { extractVoiceFromSamples } from "@/lib/ai/voice-extractor";
 import { gatherExistingWriting } from "@/lib/db/voice-profiles";
+import {
+  createDraftListing,
+  listShopListings,
+  updateListing,
+  type EtsyListingState,
+} from "@/lib/etsy/listings";
+import { listShippingProfiles } from "@/lib/etsy/shop";
+import { searchTaxonomy } from "@/lib/etsy/taxonomy";
+import { getActiveConnection } from "@/lib/db/etsy";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
   "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
@@ -1139,6 +1148,194 @@ const TOOLS: ToolDef[] = [
       const extracted = await extractVoiceFromSamples(samples);
       return { extracted, source_counts: sourceCounts, sample_length: samples.length };
     },
+  },
+
+  // -- Etsy --------------------------------------------------------------
+  // Read + write the connected Etsy shop directly. Pairs with the Hub UI
+  // at /etsy — these tools let Claude drive listing work from chat. All
+  // ops resolve the shop_id from the active etsy_connection internally.
+
+  {
+    name: "get_etsy_shop_info",
+    description:
+      "Get the connected Etsy shop's basics: shop_id, shop_name, OAuth scopes, public shop URL, connected_at, expires_at. Use to verify the shop is connected before any other Etsy tool. Returns {connected: false} if no shop is connected.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => {
+      const conn = await getActiveConnection();
+      if (!conn) return { connected: false };
+      return {
+        connected: true,
+        shop_id: conn.shop_id,
+        shop_name: conn.shop_name,
+        shop_url: conn.shop_name
+          ? `https://www.etsy.com/shop/${conn.shop_name}`
+          : null,
+        scopes: conn.scopes,
+        connected_at: conn.connected_at,
+        token_expires_at: conn.expires_at,
+      };
+    },
+  },
+  {
+    name: "list_etsy_listings",
+    description:
+      "List the Etsy shop's listings. Optionally filter by state (active/draft/inactive/expired/sold_out). Returns title, listing_id, state, price, tags, taxonomy_id, views, num_favorers, url, last_modified_timestamp — enough to spot tag-edit candidates or low-performing listings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        state: {
+          type: "string",
+          enum: ["active", "inactive", "draft", "expired", "sold_out"],
+          description: "Optional. Omit to list across all states.",
+        },
+      },
+    },
+    handler: async (args) => {
+      const state =
+        typeof args.state === "string"
+          ? (args.state as EtsyListingState)
+          : undefined;
+      return listShopListings(state);
+    },
+  },
+  {
+    name: "update_etsy_listing",
+    description:
+      "Update an existing Etsy listing. Highest-leverage use: edit `tags` (max 13, organic-traffic SEO surface). Can also change title, description, materials, price, quantity, state (active/draft/inactive), or should_auto_renew. listing_id required — get from list_etsy_listings. Pass only fields to change; omitted fields are preserved.",
+    inputSchema: {
+      type: "object",
+      required: ["listing_id"],
+      properties: {
+        listing_id: { type: "integer" },
+        title: { type: "string" },
+        description: { type: "string" },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 13,
+          description:
+            "Up to 13 Etsy tags. Each tag max 20 chars, alphanumeric + spaces. Replaces the existing tag set wholesale.",
+        },
+        materials: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 13,
+        },
+        price: { type: "number", description: "Dollars, e.g. 7.00." },
+        quantity: { type: "integer" },
+        state: {
+          type: "string",
+          enum: ["active", "inactive", "draft"],
+          description:
+            "Set to 'active' to publish a draft; 'inactive' to hide without deleting.",
+        },
+        should_auto_renew: {
+          type: "boolean",
+          description:
+            "When the listing expires (~4 months from creation/renewal), auto-renew it for $0.20. Removes recurring manual toil.",
+        },
+      },
+    },
+    handler: async (args) => {
+      const listingId = args.listing_id as number;
+      const input: Record<string, unknown> = {};
+      if (typeof args.title === "string") input.title = args.title;
+      if (typeof args.description === "string") input.description = args.description;
+      if (Array.isArray(args.tags)) input.tags = args.tags;
+      if (Array.isArray(args.materials)) input.materials = args.materials;
+      if (typeof args.price === "number") input.price = args.price;
+      if (typeof args.quantity === "number") input.quantity = args.quantity;
+      if (typeof args.state === "string") input.state = args.state;
+      if (typeof args.should_auto_renew === "boolean") {
+        input.should_auto_renew = args.should_auto_renew;
+      }
+      return updateListing(listingId, input as never);
+    },
+  },
+  {
+    name: "create_etsy_draft_listing",
+    description:
+      "Create a new DRAFT listing on Etsy. Never auto-publishes — always lands as draft for review. To find taxonomy_id, use search_etsy_taxonomy. To find shipping_profile_id, use list_etsy_shipping_profiles. To add images after creation, use the Hub UI (raw image bytes don't fit well over MCP).",
+    inputSchema: {
+      type: "object",
+      required: [
+        "title",
+        "description",
+        "price",
+        "taxonomy_id",
+        "shipping_profile_id",
+        "who_made",
+        "when_made",
+      ],
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        price: { type: "number", description: "Dollars, e.g. 7.00." },
+        quantity: {
+          type: "integer",
+          description: "Default 999 (digital downloads).",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 13,
+        },
+        taxonomy_id: { type: "integer" },
+        shipping_profile_id: { type: "integer" },
+        who_made: {
+          type: "string",
+          enum: ["i_did", "someone_else", "collective"],
+        },
+        when_made: {
+          type: "string",
+          description:
+            "One of Etsy's when_made values, e.g. 'made_to_order', '2020_2025', '2010_2019', 'before_2006'.",
+        },
+      },
+    },
+    handler: async (args) => {
+      return createDraftListing({
+        title: args.title as string,
+        description: args.description as string,
+        price: args.price as number,
+        quantity: typeof args.quantity === "number" ? (args.quantity as number) : 999,
+        tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined,
+        taxonomy_id: args.taxonomy_id as number,
+        shipping_profile_id: args.shipping_profile_id as number,
+        who_made: args.who_made as string,
+        when_made: args.when_made as string,
+      });
+    },
+  },
+  {
+    name: "search_etsy_taxonomy",
+    description:
+      "Find the right Etsy taxonomy_id for a new listing. Pass a search term (e.g. 'birthday invitation', 'baby shower', 'wedding template'). Returns up to 15 taxonomy nodes with their full path (e.g. 'Paper & Party Supplies > Paper > Invitations'). Pick the deepest-level match. Required before create_etsy_draft_listing.",
+    inputSchema: {
+      type: "object",
+      required: ["q"],
+      properties: {
+        q: {
+          type: "string",
+          description: "Search term — matches anywhere in the full path.",
+        },
+        limit: { type: "integer", description: "Default 15, max 50." },
+      },
+    },
+    handler: async (args) => {
+      const limit = Math.min(
+        typeof args.limit === "number" ? (args.limit as number) : 15,
+        50,
+      );
+      return searchTaxonomy(args.q as string, limit);
+    },
+  },
+  {
+    name: "list_etsy_shipping_profiles",
+    description:
+      "List the shop's Etsy shipping profiles. Returns shipping_profile_id + title for each. Required for create_etsy_draft_listing. For digital downloads the shop typically has one digital shipping profile.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => listShippingProfiles(),
   },
 ];
 
