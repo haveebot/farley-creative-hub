@@ -19,64 +19,102 @@ export default function LeadsPanel({
   const [filterStatus, setFilterStatus] = useState<LeadStatus | "all">("all");
   const [filterSource, setFilterSource] = useState<LeadSourceType | "all">("all");
   const [filterState, setFilterState] = useState<string>("all");
+  const [search, setSearch] = useState<string>("");
 
   const statesPresent = Array.from(
     new Set(initialLeads.map((l) => l.state).filter(Boolean)),
   ).sort();
 
+  const searchTerm = search.trim().toLowerCase();
+
   const filtered = initialLeads.filter((l) => {
     if (filterStatus !== "all" && l.status !== filterStatus) return false;
     if (filterSource !== "all" && l.source_type !== filterSource) return false;
     if (filterState !== "all" && l.state !== filterState) return false;
+    if (searchTerm) {
+      const haystack = [
+        l.business_name,
+        l.source_title,
+        l.city,
+        l.state,
+        l.industry,
+        l.size,
+        l.notes,
+        l.source_url,
+        ...(l.service_signal ?? []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
     return true;
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as LeadStatus | "all")}
-            className={filterClasses}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[240px]">
+          <span
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+            aria-hidden="true"
           >
-            <option value="all">All statuses</option>
-            {LEAD_STATUSES.map((s) => (
-              <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
-            ))}
-          </select>
-          <select
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value as LeadSourceType | "all")}
-            className={filterClasses}
-          >
-            <option value="all">All sources</option>
-            {LEAD_SOURCE_TYPES.map((s) => (
-              <option key={s} value={s}>{LEAD_SOURCE_LABELS[s]}</option>
-            ))}
-          </select>
-          {statesPresent.length > 0 && (
-            <select
-              value={filterState}
-              onChange={(e) => setFilterState(e.target.value)}
-              className={filterClasses}
-            >
-              <option value="all">All states</option>
-              {statesPresent.map((s) => (
-                <option key={s} value={s as string}>{s}</option>
-              ))}
-            </select>
-          )}
-          <span className="text-xs text-muted ml-2">
-            {filtered.length} of {initialLeads.length}
+            🔍
           </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, city, title, industry…"
+            className="w-full pl-9 pr-3 py-2 bg-transparent border border-border rounded-md text-sm focus:outline-none focus:border-accent transition"
+            autoComplete="off"
+          />
         </div>
         <a
           href="/pipeline/leads/new"
-          className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition"
+          className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0"
         >
           + New lead
         </a>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as LeadStatus | "all")}
+          className={filterClasses}
+        >
+          <option value="all">All statuses</option>
+          {LEAD_STATUSES.map((s) => (
+            <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
+          ))}
+        </select>
+        <select
+          value={filterSource}
+          onChange={(e) => setFilterSource(e.target.value as LeadSourceType | "all")}
+          className={filterClasses}
+        >
+          <option value="all">All sources</option>
+          {LEAD_SOURCE_TYPES.map((s) => (
+            <option key={s} value={s}>{LEAD_SOURCE_LABELS[s]}</option>
+          ))}
+        </select>
+        {statesPresent.length > 0 && (
+          <select
+            value={filterState}
+            onChange={(e) => setFilterState(e.target.value)}
+            className={filterClasses}
+          >
+            <option value="all">All states</option>
+            {statesPresent.map((s) => (
+              <option key={s} value={s as string}>{s}</option>
+            ))}
+          </select>
+        )}
+        <span className="text-xs text-muted ml-2">
+          {filtered.length} of {initialLeads.length}
+          {searchTerm && ` matching "${searchTerm}"`}
+        </span>
       </div>
 
       {filtered.length === 0 ? (
