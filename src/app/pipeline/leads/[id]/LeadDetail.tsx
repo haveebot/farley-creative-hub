@@ -24,15 +24,11 @@ import {
 type ConvertStatus = "idle" | "converting" | "error";
 type FirstTouchStatus = "idle" | "drafting" | "drafted" | "error";
 
-type FirstTouchResult = {
+/** PREPARE step result — no Gmail draft yet, just enrichment + email content + roster. */
+type FirstTouchPrep = {
   analysis: { role: string; constraint: string; lever: string };
   subject: string;
   body: string;
-  recipient_guess: string | null;
-  recipients: {
-    to: Array<{ email: string; name?: string | null }>;
-    cc: Array<{ email: string; name?: string | null }>;
-  };
   contacts: Array<{
     id: number;
     name: string;
@@ -42,6 +38,8 @@ type FirstTouchResult = {
     is_primary: boolean;
     notes: string;
   }>;
+  /** Operator-overridable: pre-checked contact IDs (all emailed contacts by default — Sage multi-TO pattern). */
+  suggested_to_contact_ids: number[];
   enrichment: {
     website_url: string | null;
     website_confidence: string;
@@ -50,12 +48,16 @@ type FirstTouchResult = {
     best_pick_reason: string;
     notes: string;
   } | null;
-  gmail: { draftId: string; gmailUrl: string; sender: string };
   source: { origin: string; chars: number; fetch_failed?: boolean };
   prospect: { id: number; was_already_converted: boolean; name: string; url: string } | null;
 };
 
-type RecipientChoice = "to" | "cc" | "skip";
+/** COMMIT step result — Gmail draft exists. */
+type GmailCommitResult = {
+  draftId: string;
+  gmailUrl: string;
+  sender: string;
+};
 
 export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const router = useRouter();
@@ -64,7 +66,8 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const [convertError, setConvertError] = useState<string | null>(null);
   const [firstTouchStatus, setFirstTouchStatus] = useState<FirstTouchStatus>("idle");
   const [firstTouchError, setFirstTouchError] = useState<string | null>(null);
-  const [firstTouchResult, setFirstTouchResult] = useState<FirstTouchResult | null>(null);
+  const [firstTouchPrep, setFirstTouchPrep] = useState<FirstTouchPrep | null>(null);
+  const [gmailCommit, setGmailCommit] = useState<GmailCommitResult | null>(null);
 
   async function update(updates: Partial<Lead>) {
     const res = await fetch(`/api/leads/${lead.id}`, {
@@ -119,7 +122,8 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   async function handleFirstTouch() {
     setFirstTouchStatus("drafting");
     setFirstTouchError(null);
-    setFirstTouchResult(null);
+    setFirstTouchPrep(null);
+    setGmailCommit(null);
     try {
       const res = await fetch(`/api/leads/${lead.id}/draft-first-touch`, {
         method: "POST",
@@ -132,7 +136,7 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
         setFirstTouchStatus("error");
         return;
       }
-      setFirstTouchResult(data);
+      setFirstTouchPrep(data);
       setFirstTouchStatus("drafted");
       if (data.lead) setLead(data.lead);
       router.refresh();
@@ -145,9 +149,7 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const alreadyConverted = lead.status === "converted" && lead.converted_to_prospect_id;
   const contentIsThin = (lead.raw_content?.length ?? 0) < 600;
   const alreadyDrafted = !!lead.first_touch_gmail_draft_id;
-  const gmailDraftUrl = alreadyDrafted && firstTouchResult?.gmail.gmailUrl
-    ? firstTouchResult.gmail.gmailUrl
-    : null;
+  const gmailDraftUrl = gmailCommit?.gmailUrl ?? null;
 
   return (
     <div className="space-y-6">
@@ -218,29 +220,33 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
         <p className="text-sm text-red-600 -mt-3">First-touch: {firstTouchError}</p>
       )}
 
-      {/* FIRST-TOUCH RESULT — shows after a successful draft, or
-          quick state if the lead was drafted in a prior session. */}
-      {(firstTouchResult || alreadyDrafted) && (
+      {/* FIRST-TOUCH RESULT — appears after Prepare; shows roster + draft preview;
+          ONE button to commit Gmail draft with selected recipients. */}
+      {(firstTouchPrep || gmailCommit || alreadyDrafted) && (
         <section className="p-5 border-2 border-green-500/30 rounded-lg bg-green-500/5 space-y-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="text-xs uppercase tracking-widest text-green-700 dark:text-green-400 mb-1">
-                First-touch drafted ✓
+                {gmailCommit
+                  ? "Gmail draft ready ✓"
+                  : firstTouchPrep
+                    ? "First-touch prepared — pick recipients to commit"
+                    : "First-touch drafted previously"}
               </p>
               <p className="text-base font-medium">
-                {firstTouchResult?.subject ?? lead.first_touch_subject ?? "(draft created)"}
+                {firstTouchPrep?.subject ?? lead.first_touch_subject ?? "(draft created)"}
               </p>
-              {lead.first_touch_drafted_at && (
+              {lead.first_touch_drafted_at && !firstTouchPrep && (
                 <p className="text-xs text-muted mt-1">
-                  Drafted {new Date(lead.first_touch_drafted_at).toLocaleString()} · JD via{" "}
-                  {firstTouchResult?.source.origin ?? lead.first_touch_jd_source ?? "unknown"}
+                  Last drafted {new Date(lead.first_touch_drafted_at).toLocaleString()} · JD via{" "}
+                  {lead.first_touch_jd_source ?? "unknown"}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {firstTouchResult?.prospect && (
+              {firstTouchPrep?.prospect && (
                 <a
-                  href={firstTouchResult.prospect.url}
+                  href={firstTouchPrep.prospect.url}
                   className="px-4 py-2.5 border border-green-600 text-green-700 dark:text-green-400 rounded-md text-sm font-medium hover:bg-green-600 hover:text-white transition inline-flex items-center gap-2"
                 >
                   Open prospect →
@@ -256,44 +262,45 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   rel="noreferrer noopener"
                   className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition inline-flex items-center gap-2"
                 >
-                  Review in Gmail Drafts <span aria-hidden="true">↗</span>
+                  Open Gmail Draft <span aria-hidden="true">↗</span>
                 </a>
               )}
             </div>
           </div>
-          {firstTouchResult && (
+          {firstTouchPrep && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div className="p-3 bg-surface rounded border border-border">
                   <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Role read</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.role}</p>
+                  <p className="text-foreground/90">{firstTouchPrep.analysis.role}</p>
                 </div>
                 <div className="p-3 bg-surface rounded border border-border">
                   <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Constraint</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.constraint}</p>
+                  <p className="text-foreground/90">{firstTouchPrep.analysis.constraint}</p>
                 </div>
                 <div className="p-3 bg-surface rounded border border-border">
                   <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Lever</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
+                  <p className="text-foreground/90">{firstTouchPrep.analysis.lever}</p>
                 </div>
               </div>
 
-              {/* ROSTER PICKER — operator curates TO/CC; "Apply" updates the Gmail draft */}
-              {firstTouchResult.contacts && firstTouchResult.contacts.length > 0 && (
+              {/* ROSTER → ONE button: "Send to Gmail" creates the draft with selected recipients */}
+              {firstTouchPrep.contacts && firstTouchPrep.contacts.length > 0 ? (
                 <RosterPicker
                   leadId={lead.id}
-                  contacts={firstTouchResult.contacts}
-                  initialRecipients={firstTouchResult.recipients}
-                  enrichment={firstTouchResult.enrichment}
-                  subject={firstTouchResult.subject}
-                  body={firstTouchResult.body}
-                  onApplied={(newDraftUrl) => {
-                    setFirstTouchResult({
-                      ...firstTouchResult,
-                      gmail: { ...firstTouchResult.gmail, gmailUrl: newDraftUrl },
-                    });
-                  }}
+                  contacts={firstTouchPrep.contacts}
+                  initialContactIds={firstTouchPrep.suggested_to_contact_ids}
+                  enrichment={firstTouchPrep.enrichment}
+                  subject={firstTouchPrep.subject}
+                  body={firstTouchPrep.body}
+                  alreadyCommitted={!!gmailCommit}
+                  onCommitted={(commit) => setGmailCommit(commit)}
                 />
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  ⚠ No contacts could be enriched. Add a contact on the prospect page first, then re-run Draft first-touch.
+                  {firstTouchPrep.enrichment?.notes && ` (${firstTouchPrep.enrichment.notes})`}
+                </p>
               )}
 
               <details className="text-sm">
@@ -301,23 +308,9 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   Show body preview
                 </summary>
                 <pre className="mt-3 p-4 bg-surface rounded border border-border whitespace-pre-wrap font-sans text-sm">
-                  {firstTouchResult.body}
+                  {firstTouchPrep.body}
                 </pre>
               </details>
-
-              {(!firstTouchResult.contacts || firstTouchResult.contacts.length === 0) && (
-                firstTouchResult.recipient_guess ? (
-                  <p className="text-xs text-muted">
-                    Recipient auto-filled from JD: <code>{firstTouchResult.recipient_guess}</code>.
-                    Verify in Gmail before sending.
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    ⚠ No recipient extracted — fill in the To: field in Gmail before sending.
-                    {firstTouchResult.enrichment?.notes && ` (${firstTouchResult.enrichment.notes})`}
-                  </p>
-                )
-              )}
             </>
           )}
         </section>
@@ -679,177 +672,148 @@ function PasteToEnrich({
 }
 
 /**
- * RosterPicker — operator curator for first-touch recipients.
+ * RosterPicker — operator picks recipients then commits the Gmail draft.
  *
- * Shows the prospect's contact roster (from prospect_contacts), highlights
- * the AI's pick as the default TO + suggested CCs, and lets the operator
- * change the TO/CC assignments per contact.
+ * Sage multi-TO pattern: all selected recipients land on the TO line of
+ * ONE Gmail draft. No CC distinction. Default = include all contacts
+ * with emails (operator unchecks anyone they want to skip).
  *
- * "Apply recipients" hits POST /api/leads/[id]/update-draft-recipients which
- * deletes the existing Gmail draft and creates a fresh one with the chosen
- * recipients (preserving subject + body).
+ * ONE button: "Send to Gmail Drafts" → POST /api/leads/[id]/send-to-gmail
+ * → creates the Gmail draft (deletes any previous draft for this lead).
  */
 function RosterPicker({
   leadId,
   contacts,
-  initialRecipients,
+  initialContactIds,
   enrichment,
   subject,
   body,
-  onApplied,
+  alreadyCommitted,
+  onCommitted,
 }: {
   leadId: number;
-  contacts: FirstTouchResult["contacts"];
-  initialRecipients: FirstTouchResult["recipients"];
-  enrichment: FirstTouchResult["enrichment"];
+  contacts: FirstTouchPrep["contacts"];
+  initialContactIds: number[];
+  enrichment: FirstTouchPrep["enrichment"];
   subject: string;
   body: string;
-  onApplied: (gmailUrl: string) => void;
+  alreadyCommitted: boolean;
+  onCommitted: (commit: GmailCommitResult) => void;
 }) {
-  const initialMap = new Map<number, RecipientChoice>();
-  const toEmails = new Set(initialRecipients.to.map((r) => r.email.toLowerCase()));
-  const ccEmails = new Set(initialRecipients.cc.map((r) => r.email.toLowerCase()));
-  for (const c of contacts) {
-    if (!c.email) {
-      initialMap.set(c.id, "skip");
-      continue;
-    }
-    const e = c.email.toLowerCase();
-    if (toEmails.has(e)) initialMap.set(c.id, "to");
-    else if (ccEmails.has(e)) initialMap.set(c.id, "cc");
-    else initialMap.set(c.id, "skip");
-  }
-  const [choices, setChoices] = useState<Map<number, RecipientChoice>>(initialMap);
-  const [applying, setApplying] = useState(false);
+  const initial = new Set(initialContactIds);
+  const [selected, setSelected] = useState<Set<number>>(initial);
+  const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [applied, setApplied] = useState(false);
 
-  function setChoice(id: number, c: RecipientChoice) {
-    const next = new Map(choices);
-    next.set(id, c);
-    setChoices(next);
-    setApplied(false);
+  function toggle(id: number) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
   }
 
-  const toIds = Array.from(choices.entries())
-    .filter(([, c]) => c === "to")
-    .map(([id]) => id);
-  const ccIds = Array.from(choices.entries())
-    .filter(([, c]) => c === "cc")
-    .map(([id]) => id);
-  const hasEmailedTo = toIds.some((id) => contacts.find((c) => c.id === id)?.email);
+  const selectedIds = Array.from(selected);
+  const selectedCount = selectedIds.length;
+  const ready = selectedIds.some(
+    (id) => contacts.find((c) => c.id === id)?.email,
+  );
 
-  async function apply() {
-    if (!hasEmailedTo) {
-      setError("At least one TO recipient with an email is required.");
+  async function commit() {
+    if (!ready) {
+      setError("Select at least one contact with an email.");
       return;
     }
-    setApplying(true);
+    setCommitting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/leads/${leadId}/update-draft-recipients`, {
+      const res = await fetch(`/api/leads/${leadId}/send-to-gmail`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to_contact_ids: toIds,
-          cc_contact_ids: ccIds,
+          contact_ids: selectedIds,
           subject,
           body,
         }),
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.message ?? data.error ?? "Apply failed");
+        setError(data.message ?? data.error ?? "Commit failed");
         return;
       }
-      onApplied(data.gmail.gmailUrl);
-      setApplied(true);
+      onCommitted(data.gmail);
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setApplying(false);
+      setCommitting(false);
     }
   }
 
   return (
     <div className="border border-border rounded-lg bg-surface p-4 space-y-3">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-muted mb-1">Roster</p>
-          <p className="text-sm text-foreground/80">
-            {contacts.length} contact{contacts.length !== 1 ? "s" : ""} from{" "}
-            {enrichment?.website_url ? (
-              <a
-                href={enrichment.website_url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline hover:text-foreground"
-              >
-                {new URL(enrichment.website_url).hostname}
-              </a>
-            ) : (
-              "the prospect's contact list"
-            )}
-            {enrichment?.scraped_pages && enrichment.scraped_pages.length > 1 && (
-              <span className="text-xs text-muted">
-                {" "}· scraped {enrichment.scraped_pages.length} pages
-              </span>
-            )}
-          </p>
-          {enrichment?.best_pick_reason && (
-            <p className="text-xs text-muted italic mt-1">
-              AI pick: {enrichment.best_pick_reason}
-            </p>
+      <div>
+        <p className="text-xs uppercase tracking-widest text-muted mb-1">Roster</p>
+        <p className="text-sm text-foreground/80">
+          {contacts.length} contact{contacts.length !== 1 ? "s" : ""} from{" "}
+          {enrichment?.website_url ? (
+            <a
+              href={enrichment.website_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-foreground"
+            >
+              {new URL(enrichment.website_url).hostname}
+            </a>
+          ) : (
+            "the prospect's contact list"
           )}
-        </div>
+          {enrichment?.scraped_pages && enrichment.scraped_pages.length > 1 && (
+            <span className="text-xs text-muted">
+              {" "}· scraped {enrichment.scraped_pages.length} pages
+            </span>
+          )}
+        </p>
+        <p className="text-xs text-muted mt-1">
+          Sage multi-TO pattern — all checked contacts go on the TO line of one Gmail draft.
+        </p>
       </div>
 
       <ul className="divide-y divide-border">
         {contacts.map((c) => {
-          const choice = choices.get(c.id) ?? "skip";
+          const isSelected = selected.has(c.id);
           const noEmail = !c.email;
           return (
             <li key={c.id} className="py-2 flex items-center gap-3 flex-wrap">
-              <div className="min-w-0 flex-1">
+              <input
+                type="checkbox"
+                id={`contact-${c.id}`}
+                checked={isSelected}
+                disabled={noEmail}
+                onChange={() => !noEmail && toggle(c.id)}
+                className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
+              />
+              <label htmlFor={`contact-${c.id}`} className="min-w-0 flex-1 cursor-pointer">
                 <p className="text-sm font-medium">
                   {c.name}
                   {c.is_primary && (
                     <span className="ml-2 text-[10px] uppercase tracking-widest text-accent">
-                      AI pick
+                      AI top pick
                     </span>
                   )}
                 </p>
                 <p className="text-xs text-muted truncate">
                   {c.notes || "(no title)"}
-                  {c.email ? <> · <code>{c.email}</code></> : <> · <span className="text-amber-600 dark:text-amber-400">no email</span></>}
+                  {c.email ? (
+                    <>
+                      {" "}· <code>{c.email}</code>
+                    </>
+                  ) : (
+                    <>
+                      {" "}·{" "}
+                      <span className="text-amber-600 dark:text-amber-400">no email — skipped</span>
+                    </>
+                  )}
                 </p>
-              </div>
-              <fieldset className="flex items-center gap-1 shrink-0" disabled={noEmail}>
-                {(["to", "cc", "skip"] as RecipientChoice[]).map((opt) => (
-                  <label
-                    key={opt}
-                    className={`px-2 py-1 text-xs rounded cursor-pointer border transition ${
-                      choice === opt
-                        ? opt === "to"
-                          ? "bg-green-600 text-white border-green-600"
-                          : opt === "cc"
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-surface-strong text-muted border-border"
-                        : "border-border text-muted hover:border-accent"
-                    } ${noEmail ? "opacity-40 cursor-not-allowed" : ""}`}
-                  >
-                    <input
-                      type="radio"
-                      name={`recipient-${c.id}`}
-                      value={opt}
-                      checked={choice === opt}
-                      onChange={() => !noEmail && setChoice(c.id, opt)}
-                      className="sr-only"
-                    />
-                    {opt.toUpperCase()}
-                  </label>
-                ))}
-              </fieldset>
+              </label>
             </li>
           );
         })}
@@ -857,22 +821,31 @@ function RosterPicker({
 
       <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border">
         <p className="text-xs text-muted">
-          {toIds.length} TO · {ccIds.length} CC
-          {!hasEmailedTo && (
+          {selectedCount} of {contacts.length} selected
+          {!ready && (
             <span className="text-amber-600 dark:text-amber-400">
-              {" "}· need ≥1 TO with email
+              {" "}· need ≥1 with email
             </span>
           )}
         </p>
         <button
           type="button"
-          onClick={apply}
-          disabled={applying || !hasEmailedTo}
-          className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          onClick={commit}
+          disabled={committing || !ready}
+          className="px-5 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
         >
-          {applying ? "Applying…" : applied ? "Applied ✓" : "Apply recipients to Gmail draft"}
+          {committing
+            ? "Creating Gmail draft…"
+            : alreadyCommitted
+              ? "Update Gmail draft"
+              : `Send to Gmail Drafts (${selectedCount} recipient${selectedCount !== 1 ? "s" : ""})`}
         </button>
       </div>
+      {enrichment?.best_pick_reason && (
+        <p className="text-xs text-muted italic">
+          AI's top pick rationale: {enrichment.best_pick_reason}
+        </p>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );

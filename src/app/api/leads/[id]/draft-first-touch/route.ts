@@ -1,36 +1,30 @@
 /**
- * POST /api/leads/[id]/draft-first-touch
+ * POST /api/leads/[id]/draft-first-touch — PREPARE step.
  *
- * Generate a custom first-touch email for a job-board lead and land it
- * in the connected Workspace Gmail Drafts folder. Operator (Collie) then
- * reviews + sends from Gmail.
+ * Sage-style multi-TO outreach pattern. Per the Sage Agency Intro Email
+ * Playbook ("Send to principals + sales manager + specs contact
+ * simultaneously"), the first-touch flow is two clicks:
+ *   1. PREPARE (this endpoint) — enrich company → roster → draft email
+ *      in memory. NO Gmail draft yet. Returns roster + email preview.
+ *   2. COMMIT (POST /api/leads/[id]/send-to-gmail) — with the operator's
+ *      chosen recipient list, creates ONE Gmail draft with all chosen
+ *      contacts on the TO line.
  *
- * Flow:
- *   1. Resolve JD content via hybrid fetch (URL → stored → operator paste)
- *   2. Call Claude with composition template + brand kit + voice profile
- *   3. Best-effort extract a recipient email from the JD (or leave blank
- *      for the operator to fill in Gmail)
- *   4. Create the Gmail draft via createGmailDraft
- *   5. Stamp lead with first_touch_* tracking columns
- *   6. Append a note line to lead.notes for traceability
+ * This endpoint does:
+ *   1. Auto-promote lead → prospect (idempotent)
+ *   2. Enrich company → populate prospect_contacts (idempotent — skips
+ *      if contacts already exist)
+ *   3. Resolve JD content via hybrid fetch (URL → stored → operator paste)
+ *   4. Draft email via Claude (composition template + brand kit + voice
+ *      profile)
+ *   5. Return roster + recipients (AI's pre-selected picks, all with
+ *      email default to "included") + email preview
  *
- * Lead is NOT auto-promoted to prospect — Collie does that herself after
- * sending, via the existing Convert button. Keeps the state model clean:
- * a lead with a first-touch drafted is still a lead until she signals
- * intent by promoting.
+ * No Gmail draft is created at this step. No lead row first_touch_*
+ * columns are stamped yet — that happens on commit.
  *
  * Request body (optional):
  *   { operator_pasted?: string }  — full JD text if URL + stored are thin
- *
- * Response:
- *   {
- *     ok: true,
- *     analysis: { role, constraint, lever },
- *     subject, body, recipient_guess,
- *     gmail: { draftId, gmailUrl },
- *     source: { origin, chars, fetch_failed?, fetch_error? },
- *     lead: <updated lead row>
- *   }
  */
 import { NextResponse } from "next/server";
 import { requireAuth, type AuthContext } from "@/lib/auth/require";
@@ -38,11 +32,9 @@ import { getLead } from "@/lib/db/leads";
 import { getStudioKit } from "@/lib/db/brand-kits";
 import { getDefaultVoiceProfile } from "@/lib/db/voice-profiles";
 import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
-import { createGmailDraft, type GmailRecipient } from "@/lib/gmail/send";
 import { draftFirstTouch } from "@/lib/ai/first-touch";
-import { enrichCompany, type ContactCandidate } from "@/lib/ai/enrich-company";
-import { createContact, listContacts, logActivity } from "@/lib/db/prospects";
-import { query } from "@/lib/db/client";
+import { enrichCompany } from "@/lib/ai/enrich-company";
+import { createContact, listContacts } from "@/lib/db/prospects";
 import { ensureProspectForLead } from "@/lib/leads/promote";
 import type { Lead } from "@/lib/leads-shared";
 import type { ContactRole } from "@/lib/pipeline-shared";
@@ -61,22 +53,13 @@ function mapTitleToRole(title: string | null): ContactRole {
   return "other";
 }
 
-/** Build a "who should we reach" hint for the enricher based on the lead's posted role. */
+/** Build a "who should we reach" hint for the enricher.
+ *  Sage pattern: send to principals + function-leader + specs simultaneously,
+ *  not just one person. Enricher should surface all of them. */
 function recipientContextFromLead(lead: Lead): string {
   const role = lead.source_title ?? "unspecified role";
   const business = lead.business_name ?? "the company";
-  return `${business} is hiring for: "${role}". Find the people who would either be HIRING for this role (the function leader the new hire would report to) OR the company principal/founder/CEO if it's a small firm. For a marketing role, find the CMO / Marketing Director / Head of Marketing. For a design/creative role, find the Creative Director / Head of Design. If it's a small firm with no obvious function leader, the founder is the right call. Pick the SINGLE best primary contact + identify any complementary CC contacts (e.g., the founder if the function leader is the primary).`;
-}
-
-const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-
-function guessRecipientEmail(jd: string): string | null {
-  const match = jd.match(EMAIL_RE);
-  if (!match) return null;
-  // Filter out obvious non-recipient emails (noreply, do-not-reply, etc).
-  const email = match[0].toLowerCase();
-  if (/(noreply|no-reply|do-not-reply|donotreply)/.test(email)) return null;
-  return match[0];
+  return `${business} is hiring for: "${role}". This outreach goes to MULTIPLE recipients in one email (Sage pattern: principals + function leader + relevant peers simultaneously). Surface ALL leadership-level contacts you can find: the principal/founder/CEO, the function leader the new hire would report to (e.g., CMO for a Marketing Director hire, Creative Director for a Design role), and any other senior leaders who'd care about this hire. The operator will pick which subset of these to include on the email's TO line.`;
 }
 
 export async function POST(
@@ -145,12 +128,8 @@ export async function POST(
   const promotion = await ensureProspectForLead(lead, createdByLabel(auth));
 
   // Enrich the company → roster, BUT only if the prospect doesn't already
-  // have contacts (idempotent — re-draft on a prospect doesn't re-enrich).
-  // This happens BEFORE Gmail draft so we can populate TO/CC from the roster.
+  // have contacts (idempotent — re-prepare on a prospect doesn't re-enrich).
   let enrichment: Awaited<ReturnType<typeof enrichCompany>> | null = null;
-  let toRecipients: GmailRecipient[] = [];
-  const ccRecipients: GmailRecipient[] = [];
-  let recipientGuess = guessRecipientEmail(drafted.raw_content_used);
 
   if (promotion.prospect_id > 0) {
     const existingContacts = await listContacts(promotion.prospect_id);
@@ -181,108 +160,26 @@ export async function POST(
         console.warn("[draft-first-touch] enrichment failed", err);
       }
     }
-
-    // Build TO/CC from contacts: primary as TO, all other emailed contacts as CC.
-    const allContacts = await listContacts(promotion.prospect_id);
-    const primary = allContacts.find((c) => c.is_primary && c.email);
-    if (primary?.email) {
-      toRecipients = [{ email: primary.email, name: primary.name }];
-      recipientGuess = primary.email;
-      for (const c of allContacts) {
-        if (!c.email || c.id === primary.id) continue;
-        ccRecipients.push({ email: c.email, name: c.name });
-      }
-    } else if (allContacts.some((c) => c.email)) {
-      // No primary but we have emailed contacts — first emailed contact is TO
-      const first = allContacts.find((c) => c.email)!;
-      toRecipients = [{ email: first.email!, name: first.name }];
-      recipientGuess = first.email!;
-      for (const c of allContacts) {
-        if (!c.email || c.id === first.id) continue;
-        ccRecipients.push({ email: c.email, name: c.name });
-      }
-    }
   }
 
-  let gmailDraft;
-  try {
-    gmailDraft = await createGmailDraft({
-      to: toRecipients[0]?.email ?? "",
-      toName: toRecipients[0]?.name ?? null,
-      tos: toRecipients.slice(1),
-      cc: ccRecipients,
-      subject: drafted.subject,
-      text: drafted.body,
-    });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "gmail-draft-failed",
-        message: (err as Error).message,
-        // Surface the draft so the operator can still copy/paste it manually
-        // even if Gmail failed.
-        analysis: drafted.analysis,
-        subject: drafted.subject,
-        body: drafted.body,
-      },
-      { status: 502 },
-    );
-  }
-
-  // Stamp the lead row + append a traceable note.
-  const noteLine = `[first-touch drafted ${new Date().toISOString().slice(0, 10)}] ${drafted.subject} (gmail draft ${gmailDraft.draftId}; JD via ${drafted.source.origin})`;
-  const newNotes = lead.notes.trim()
-    ? `${lead.notes.trim()}\n\n${noteLine}`
-    : noteLine;
-
-  await query(
-    `UPDATE leads
-        SET first_touch_drafted_at = NOW(),
-            first_touch_gmail_draft_id = $1,
-            first_touch_subject = $2,
-            first_touch_jd_source = $3,
-            notes = $4,
-            updated_at = NOW()
-      WHERE id = $5`,
-    [gmailDraft.draftId, drafted.subject, drafted.source.origin, newNotes, numId],
-  );
-
-  // Log the email-drafted activity on the new (or existing) prospect so
-  // it shows up in the prospect's timeline.
-  if (promotion.prospect_id > 0) {
-    await logActivity({
-      prospect_id: promotion.prospect_id,
-      kind: "email_drafted",
-      content: `First-touch: ${drafted.subject} (review in Gmail Drafts)`,
-      draft_id: null,
-      created_by: createdByLabel(auth),
-    }).catch((err) =>
-      console.warn("[draft-first-touch] email_drafted activity log failed", err),
-    );
-  }
-
-  const updated = await getLead(numId);
-
-  // Gmail draft URL — opens the draft in the operator's Gmail UI.
-  const gmailUrl = `https://mail.google.com/mail/u/${encodeURIComponent(workspace.email)}/#drafts?compose=${gmailDraft.draftId}`;
-
-  // Re-list contacts so the response reflects the final state (incl. enrichment).
+  // Default "include" suggestion (operator can override on the UI):
+  // Sage pattern — include ALL emailed contacts on the TO line. Operator
+  // unchecks anyone they want to skip before committing to Gmail.
   const finalContacts = promotion.prospect_id > 0
     ? await listContacts(promotion.prospect_id)
     : [];
+  const suggested_to_contact_ids = finalContacts
+    .filter((c) => c.email)
+    .map((c) => c.id);
 
   return NextResponse.json({
     ok: true,
     analysis: drafted.analysis,
     subject: drafted.subject,
     body: drafted.body,
-    recipient_guess: recipientGuess,
-    recipients: {
-      to: toRecipients,
-      cc: ccRecipients,
-    },
     contacts: finalContacts,
+    /** Operator-overridable suggestion: include all emailed contacts on the TO line. */
+    suggested_to_contact_ids,
     enrichment: enrichment
       ? {
           website_url: enrichment.website_url,
@@ -293,13 +190,8 @@ export async function POST(
           notes: enrichment.notes,
         }
       : null,
-    gmail: {
-      draftId: gmailDraft.draftId,
-      gmailUrl,
-      sender: workspace.email,
-    },
     source: drafted.source,
-    lead: updated satisfies Lead | null,
+    lead,
     prospect: promotion.prospect_id > 0
       ? {
           id: promotion.prospect_id,
