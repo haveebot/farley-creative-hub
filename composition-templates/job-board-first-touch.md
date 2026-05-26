@@ -64,8 +64,21 @@ Don't list "branding, social, web, strategy." Pick the ONE thing in their JD tha
 **11. Founder-operator empathy is the trust lever.**
 "We've been on the other side of this hire — built teams, written the JD, signed the offer letter." That's the line that separates Farley from every other agency cold email. Use sparingly (once per email, max).
 
-**12. Show don't tell — one receipt with real outcome numbers when available.**
+**12. Show don't tell — one receipt by default, two MAX when complementary.**
 Lead with the OUTCOME ("62% revenue lift on PALMFEST") not the project name alone. See CASE STUDIES section in the brand kit for the full receipt set.
+
+**Default: ONE receipt** — sharpest signal, demonstrates discernment. For most prospects (small/mid, single clear gap), one receipt is right.
+
+**Allowed exception: TWO receipts** — ONLY when ALL of these are true:
+- Prospect is another AGENCY OR enterprise-tier OR hiring a hybrid creative+systems role
+- The two receipts cover DISTINCTLY DIFFERENT angles (one creative-outcome, one systems-capability)
+- The email body still reads tight under 130 words
+
+Example combos that work as two:
+- PALMFEST (campaign performance) + CrossRef (platform/systems at scale) — for tech-agency or enterprise SaaS
+- Cinnamon Shore (team-build + agency-direction) + Sage Em (operator-grade artifacts) — for B2B firm building marketing capacity
+
+**Never three.** When in doubt, ONE.
 
 **13. Receipt selection is prospect-type-aware. Pick the parallel that lands.**
 - **Prospect is another AGENCY (media, creative, marketing, ad)** → use **CrossRef** (multi-tenant platform built specifically for rep agencies, demonstrates we build operational software at scale) OR **PALMFEST** (multi-channel campaigns with measurable performance: 77% web-tracked sales, 48% YOY traffic). Agencies respect demonstrable systems + measurable campaign work.

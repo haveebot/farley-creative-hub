@@ -29,10 +29,33 @@ type FirstTouchResult = {
   subject: string;
   body: string;
   recipient_guess: string | null;
+  recipients: {
+    to: Array<{ email: string; name?: string | null }>;
+    cc: Array<{ email: string; name?: string | null }>;
+  };
+  contacts: Array<{
+    id: number;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    role: string | null;
+    is_primary: boolean;
+    notes: string;
+  }>;
+  enrichment: {
+    website_url: string | null;
+    website_confidence: string;
+    scraped_pages: string[];
+    failed_pages: Array<{ url: string; error: string }>;
+    best_pick_reason: string;
+    notes: string;
+  } | null;
   gmail: { draftId: string; gmailUrl: string; sender: string };
   source: { origin: string; chars: number; fetch_failed?: boolean };
   prospect: { id: number; was_already_converted: boolean; name: string; url: string } | null;
 };
+
+type RecipientChoice = "to" | "cc" | "skip";
 
 export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const router = useRouter();
@@ -254,6 +277,25 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
                 </div>
               </div>
+
+              {/* ROSTER PICKER — operator curates TO/CC; "Apply" updates the Gmail draft */}
+              {firstTouchResult.contacts && firstTouchResult.contacts.length > 0 && (
+                <RosterPicker
+                  leadId={lead.id}
+                  contacts={firstTouchResult.contacts}
+                  initialRecipients={firstTouchResult.recipients}
+                  enrichment={firstTouchResult.enrichment}
+                  subject={firstTouchResult.subject}
+                  body={firstTouchResult.body}
+                  onApplied={(newDraftUrl) => {
+                    setFirstTouchResult({
+                      ...firstTouchResult,
+                      gmail: { ...firstTouchResult.gmail, gmailUrl: newDraftUrl },
+                    });
+                  }}
+                />
+              )}
+
               <details className="text-sm">
                 <summary className="cursor-pointer text-xs text-muted hover:text-foreground">
                   Show body preview
@@ -262,15 +304,19 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   {firstTouchResult.body}
                 </pre>
               </details>
-              {firstTouchResult.recipient_guess ? (
-                <p className="text-xs text-muted">
-                  Recipient auto-filled from JD: <code>{firstTouchResult.recipient_guess}</code>.
-                  Verify in Gmail before sending.
-                </p>
-              ) : (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠ No recipient email found in the JD — fill in the To: field in Gmail before sending.
-                </p>
+
+              {(!firstTouchResult.contacts || firstTouchResult.contacts.length === 0) && (
+                firstTouchResult.recipient_guess ? (
+                  <p className="text-xs text-muted">
+                    Recipient auto-filled from JD: <code>{firstTouchResult.recipient_guess}</code>.
+                    Verify in Gmail before sending.
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    ⚠ No recipient extracted — fill in the To: field in Gmail before sending.
+                    {firstTouchResult.enrichment?.notes && ` (${firstTouchResult.enrichment.notes})`}
+                  </p>
+                )
               )}
             </>
           )}
@@ -628,6 +674,206 @@ function PasteToEnrich({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * RosterPicker — operator curator for first-touch recipients.
+ *
+ * Shows the prospect's contact roster (from prospect_contacts), highlights
+ * the AI's pick as the default TO + suggested CCs, and lets the operator
+ * change the TO/CC assignments per contact.
+ *
+ * "Apply recipients" hits POST /api/leads/[id]/update-draft-recipients which
+ * deletes the existing Gmail draft and creates a fresh one with the chosen
+ * recipients (preserving subject + body).
+ */
+function RosterPicker({
+  leadId,
+  contacts,
+  initialRecipients,
+  enrichment,
+  subject,
+  body,
+  onApplied,
+}: {
+  leadId: number;
+  contacts: FirstTouchResult["contacts"];
+  initialRecipients: FirstTouchResult["recipients"];
+  enrichment: FirstTouchResult["enrichment"];
+  subject: string;
+  body: string;
+  onApplied: (gmailUrl: string) => void;
+}) {
+  const initialMap = new Map<number, RecipientChoice>();
+  const toEmails = new Set(initialRecipients.to.map((r) => r.email.toLowerCase()));
+  const ccEmails = new Set(initialRecipients.cc.map((r) => r.email.toLowerCase()));
+  for (const c of contacts) {
+    if (!c.email) {
+      initialMap.set(c.id, "skip");
+      continue;
+    }
+    const e = c.email.toLowerCase();
+    if (toEmails.has(e)) initialMap.set(c.id, "to");
+    else if (ccEmails.has(e)) initialMap.set(c.id, "cc");
+    else initialMap.set(c.id, "skip");
+  }
+  const [choices, setChoices] = useState<Map<number, RecipientChoice>>(initialMap);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
+
+  function setChoice(id: number, c: RecipientChoice) {
+    const next = new Map(choices);
+    next.set(id, c);
+    setChoices(next);
+    setApplied(false);
+  }
+
+  const toIds = Array.from(choices.entries())
+    .filter(([, c]) => c === "to")
+    .map(([id]) => id);
+  const ccIds = Array.from(choices.entries())
+    .filter(([, c]) => c === "cc")
+    .map(([id]) => id);
+  const hasEmailedTo = toIds.some((id) => contacts.find((c) => c.id === id)?.email);
+
+  async function apply() {
+    if (!hasEmailedTo) {
+      setError("At least one TO recipient with an email is required.");
+      return;
+    }
+    setApplying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/update-draft-recipients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to_contact_ids: toIds,
+          cc_contact_ids: ccIds,
+          subject,
+          body,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.message ?? data.error ?? "Apply failed");
+        return;
+      }
+      onApplied(data.gmail.gmailUrl);
+      setApplied(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-surface p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-muted mb-1">Roster</p>
+          <p className="text-sm text-foreground/80">
+            {contacts.length} contact{contacts.length !== 1 ? "s" : ""} from{" "}
+            {enrichment?.website_url ? (
+              <a
+                href={enrichment.website_url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline hover:text-foreground"
+              >
+                {new URL(enrichment.website_url).hostname}
+              </a>
+            ) : (
+              "the prospect's contact list"
+            )}
+            {enrichment?.scraped_pages && enrichment.scraped_pages.length > 1 && (
+              <span className="text-xs text-muted">
+                {" "}· scraped {enrichment.scraped_pages.length} pages
+              </span>
+            )}
+          </p>
+          {enrichment?.best_pick_reason && (
+            <p className="text-xs text-muted italic mt-1">
+              AI pick: {enrichment.best_pick_reason}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <ul className="divide-y divide-border">
+        {contacts.map((c) => {
+          const choice = choices.get(c.id) ?? "skip";
+          const noEmail = !c.email;
+          return (
+            <li key={c.id} className="py-2 flex items-center gap-3 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {c.name}
+                  {c.is_primary && (
+                    <span className="ml-2 text-[10px] uppercase tracking-widest text-accent">
+                      AI pick
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {c.notes || "(no title)"}
+                  {c.email ? <> · <code>{c.email}</code></> : <> · <span className="text-amber-600 dark:text-amber-400">no email</span></>}
+                </p>
+              </div>
+              <fieldset className="flex items-center gap-1 shrink-0" disabled={noEmail}>
+                {(["to", "cc", "skip"] as RecipientChoice[]).map((opt) => (
+                  <label
+                    key={opt}
+                    className={`px-2 py-1 text-xs rounded cursor-pointer border transition ${
+                      choice === opt
+                        ? opt === "to"
+                          ? "bg-green-600 text-white border-green-600"
+                          : opt === "cc"
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-surface-strong text-muted border-border"
+                        : "border-border text-muted hover:border-accent"
+                    } ${noEmail ? "opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`recipient-${c.id}`}
+                      value={opt}
+                      checked={choice === opt}
+                      onChange={() => !noEmail && setChoice(c.id, opt)}
+                      className="sr-only"
+                    />
+                    {opt.toUpperCase()}
+                  </label>
+                ))}
+              </fieldset>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border">
+        <p className="text-xs text-muted">
+          {toIds.length} TO · {ccIds.length} CC
+          {!hasEmailedTo && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {" "}· need ≥1 TO with email
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={apply}
+          disabled={applying || !hasEmailedTo}
+          className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+        >
+          {applying ? "Applying…" : applied ? "Applied ✓" : "Apply recipients to Gmail draft"}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }

@@ -38,15 +38,34 @@ import { getLead } from "@/lib/db/leads";
 import { getStudioKit } from "@/lib/db/brand-kits";
 import { getDefaultVoiceProfile } from "@/lib/db/voice-profiles";
 import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
-import { createGmailDraft } from "@/lib/gmail/send";
+import { createGmailDraft, type GmailRecipient } from "@/lib/gmail/send";
 import { draftFirstTouch } from "@/lib/ai/first-touch";
-import { logActivity } from "@/lib/db/prospects";
+import { enrichCompany, type ContactCandidate } from "@/lib/ai/enrich-company";
+import { createContact, listContacts, logActivity } from "@/lib/db/prospects";
 import { query } from "@/lib/db/client";
 import { ensureProspectForLead } from "@/lib/leads/promote";
 import type { Lead } from "@/lib/leads-shared";
+import type { ContactRole } from "@/lib/pipeline-shared";
 
 function createdByLabel(auth: AuthContext): string {
   return auth.type === "user" ? auth.email : `agent:${auth.tokenName}`;
+}
+
+function mapTitleToRole(title: string | null): ContactRole {
+  if (!title) return "other";
+  const t = title.toLowerCase();
+  if (/founder|ceo|president|owner|principal|managing partner/.test(t)) return "owner";
+  if (/marketing|growth|brand|content|comms/.test(t)) return "marketing_lead";
+  if (/creative|design|art director/.test(t)) return "designer";
+  if (/cto|coo|cfo|vp |director|head of/.test(t)) return "decision_maker";
+  return "other";
+}
+
+/** Build a "who should we reach" hint for the enricher based on the lead's posted role. */
+function recipientContextFromLead(lead: Lead): string {
+  const role = lead.source_title ?? "unspecified role";
+  const business = lead.business_name ?? "the company";
+  return `${business} is hiring for: "${role}". Find the people who would either be HIRING for this role (the function leader the new hire would report to) OR the company principal/founder/CEO if it's a small firm. For a marketing role, find the CMO / Marketing Director / Head of Marketing. For a design/creative role, find the Creative Director / Head of Design. If it's a small firm with no obvious function leader, the founder is the right call. Pick the SINGLE best primary contact + identify any complementary CC contacts (e.g., the founder if the function leader is the primary).`;
 }
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
@@ -122,12 +141,76 @@ export async function POST(
     );
   }
 
-  const recipientGuess = guessRecipientEmail(drafted.raw_content_used);
+  // Auto-promote lead → prospect (if not already promoted and business_name present)
+  const promotion = await ensureProspectForLead(lead, createdByLabel(auth));
+
+  // Enrich the company → roster, BUT only if the prospect doesn't already
+  // have contacts (idempotent — re-draft on a prospect doesn't re-enrich).
+  // This happens BEFORE Gmail draft so we can populate TO/CC from the roster.
+  let enrichment: Awaited<ReturnType<typeof enrichCompany>> | null = null;
+  let toRecipients: GmailRecipient[] = [];
+  const ccRecipients: GmailRecipient[] = [];
+  let recipientGuess = guessRecipientEmail(drafted.raw_content_used);
+
+  if (promotion.prospect_id > 0) {
+    const existingContacts = await listContacts(promotion.prospect_id);
+    if (existingContacts.length === 0) {
+      try {
+        enrichment = await enrichCompany({
+          business_name: lead.business_name ?? promotion.prospect_name,
+          source_url: lead.source_url,
+          source_title: lead.source_title,
+          recipient_context: recipientContextFromLead(lead),
+        });
+        // Persist candidates to prospect_contacts
+        for (let i = 0; i < enrichment.candidates.length; i++) {
+          const c = enrichment.candidates[i];
+          await createContact({
+            prospect_id: promotion.prospect_id,
+            name: c.name,
+            email: c.email,
+            phone: null,
+            role: mapTitleToRole(c.title),
+            is_primary: i === enrichment.best_pick_index,
+            notes: [c.title, c.notes, `Source: ${c.source_url}`]
+              .filter(Boolean)
+              .join(" — "),
+          });
+        }
+      } catch (err) {
+        console.warn("[draft-first-touch] enrichment failed", err);
+      }
+    }
+
+    // Build TO/CC from contacts: primary as TO, all other emailed contacts as CC.
+    const allContacts = await listContacts(promotion.prospect_id);
+    const primary = allContacts.find((c) => c.is_primary && c.email);
+    if (primary?.email) {
+      toRecipients = [{ email: primary.email, name: primary.name }];
+      recipientGuess = primary.email;
+      for (const c of allContacts) {
+        if (!c.email || c.id === primary.id) continue;
+        ccRecipients.push({ email: c.email, name: c.name });
+      }
+    } else if (allContacts.some((c) => c.email)) {
+      // No primary but we have emailed contacts — first emailed contact is TO
+      const first = allContacts.find((c) => c.email)!;
+      toRecipients = [{ email: first.email!, name: first.name }];
+      recipientGuess = first.email!;
+      for (const c of allContacts) {
+        if (!c.email || c.id === first.id) continue;
+        ccRecipients.push({ email: c.email, name: c.name });
+      }
+    }
+  }
 
   let gmailDraft;
   try {
     gmailDraft = await createGmailDraft({
-      to: recipientGuess ?? "",
+      to: toRecipients[0]?.email ?? "",
+      toName: toRecipients[0]?.name ?? null,
+      tos: toRecipients.slice(1),
+      cc: ccRecipients,
       subject: drafted.subject,
       text: drafted.body,
     });
@@ -146,9 +229,6 @@ export async function POST(
       { status: 502 },
     );
   }
-
-  // Auto-promote lead → prospect (if not already promoted and business_name present)
-  const promotion = await ensureProspectForLead(lead, createdByLabel(auth));
 
   // Stamp the lead row + append a traceable note.
   const noteLine = `[first-touch drafted ${new Date().toISOString().slice(0, 10)}] ${drafted.subject} (gmail draft ${gmailDraft.draftId}; JD via ${drafted.source.origin})`;
@@ -187,12 +267,32 @@ export async function POST(
   // Gmail draft URL — opens the draft in the operator's Gmail UI.
   const gmailUrl = `https://mail.google.com/mail/u/${encodeURIComponent(workspace.email)}/#drafts?compose=${gmailDraft.draftId}`;
 
+  // Re-list contacts so the response reflects the final state (incl. enrichment).
+  const finalContacts = promotion.prospect_id > 0
+    ? await listContacts(promotion.prospect_id)
+    : [];
+
   return NextResponse.json({
     ok: true,
     analysis: drafted.analysis,
     subject: drafted.subject,
     body: drafted.body,
     recipient_guess: recipientGuess,
+    recipients: {
+      to: toRecipients,
+      cc: ccRecipients,
+    },
+    contacts: finalContacts,
+    enrichment: enrichment
+      ? {
+          website_url: enrichment.website_url,
+          website_confidence: enrichment.website_confidence,
+          scraped_pages: enrichment.scraped_pages,
+          failed_pages: enrichment.failed_pages,
+          best_pick_reason: enrichment.best_pick_reason,
+          notes: enrichment.notes,
+        }
+      : null,
     gmail: {
       draftId: gmailDraft.draftId,
       gmailUrl,

@@ -19,9 +19,19 @@ import { refreshAccessToken } from "./oauth";
 const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 const GMAIL_DRAFTS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/drafts";
 
+export type GmailRecipient = {
+  email: string;
+  name?: string | null;
+};
+
 export type GmailSendOptions = {
+  /** Primary recipient — backwards-compat singular field. If `tos` is set, this is appended to that list. Pass empty string to skip. */
   to: string;
   toName?: string | null;
+  /** Additional TO recipients beyond the primary. Optional. */
+  tos?: GmailRecipient[];
+  /** CC recipients. Optional. */
+  cc?: GmailRecipient[];
   subject: string;
   text: string;
   /** Optional RFC822 In-Reply-To header for threading future replies. */
@@ -130,13 +140,41 @@ export async function createGmailDraft(opts: GmailSendOptions): Promise<GmailDra
   const { accessToken, connection } = await getValidAccessToken();
 
   const fromHeader = connection.email;
-  const toHeader = opts.toName
-    ? `${formatHeaderName(opts.toName)} <${opts.to}>`
-    : opts.to;
+
+  // Build the TO list: backwards-compat `to` first, then any `tos` array.
+  // Deduplicate by lowercased email so a primary + roster-duplicate doesn't
+  // double-send.
+  const toList: GmailRecipient[] = [];
+  if (opts.to && opts.to.trim()) {
+    toList.push({ email: opts.to.trim(), name: opts.toName ?? null });
+  }
+  for (const r of opts.tos ?? []) {
+    const email = r.email?.trim();
+    if (!email) continue;
+    if (toList.some((x) => x.email.toLowerCase() === email.toLowerCase())) continue;
+    toList.push({ email, name: r.name ?? null });
+  }
+
+  const ccList: GmailRecipient[] = [];
+  for (const r of opts.cc ?? []) {
+    const email = r.email?.trim();
+    if (!email) continue;
+    if (toList.some((x) => x.email.toLowerCase() === email.toLowerCase())) continue;
+    if (ccList.some((x) => x.email.toLowerCase() === email.toLowerCase())) continue;
+    ccList.push({ email, name: r.name ?? null });
+  }
+
+  function fmt(r: GmailRecipient): string {
+    return r.name ? `${formatHeaderName(r.name)} <${r.email}>` : r.email;
+  }
+
+  const toHeader = toList.map(fmt).join(", ");
+  const ccHeader = ccList.map(fmt).join(", ");
 
   const headers: string[] = [
     `From: ${fromHeader}`,
     `To: ${toHeader}`,
+    ...(ccHeader ? [`Cc: ${ccHeader}`] : []),
     `Subject: ${encodeSubject(opts.subject)}`,
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
@@ -171,6 +209,23 @@ export async function createGmailDraft(opts: GmailSendOptions): Promise<GmailDra
     messageId: data.message.id,
     threadId: data.message.threadId,
   };
+}
+
+/**
+ * Delete a Gmail draft by id. Used when re-creating a draft with different
+ * recipients (since Gmail draft update is a full-message replace anyway,
+ * delete + create is simpler than tracking the change).
+ */
+export async function deleteGmailDraft(draftId: string): Promise<void> {
+  const { accessToken } = await getValidAccessToken();
+  const res = await fetch(`${GMAIL_DRAFTS_URL}/${draftId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Gmail draft delete failed: ${res.status} — ${text}`);
+  }
 }
 
 /**
