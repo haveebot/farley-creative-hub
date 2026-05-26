@@ -406,3 +406,39 @@ CREATE TABLE IF NOT EXISTS etsy_taxonomy_cache (
 
 CREATE INDEX IF NOT EXISTS etsy_taxonomy_cache_parent_idx ON etsy_taxonomy_cache (parent_id);
 CREATE INDEX IF NOT EXISTS etsy_taxonomy_cache_name_idx ON etsy_taxonomy_cache (LOWER(name));
+
+-- ============ voice_profiles (first-class voice, separate from brand kits) ============
+-- A voice profile is a reusable "how to sound" — independent of the visual
+-- brand. A draft picks a voice profile to apply, with optional brand_kit
+-- override of other fields (colors, audience, etc).
+CREATE TABLE IF NOT EXISTS voice_profiles (
+  id                SERIAL PRIMARY KEY,
+  name              TEXT NOT NULL,
+  description       TEXT NOT NULL DEFAULT '',
+  voice_notes       TEXT NOT NULL DEFAULT '',
+  writing_samples   TEXT NOT NULL DEFAULT '',
+  always_say        TEXT[] NOT NULL DEFAULT '{}'::text[],
+  never_say         TEXT[] NOT NULL DEFAULT '{}'::text[],
+  audience_persona  TEXT NOT NULL DEFAULT '',
+  is_default        BOOLEAN NOT NULL DEFAULT false,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Only one voice profile can be the default at a time
+CREATE UNIQUE INDEX IF NOT EXISTS voice_profiles_default_unique
+  ON voice_profiles (is_default) WHERE is_default = true;
+
+-- Drafts can optionally point at a voice profile (overrides the brand_kit
+-- voice fields when set; falls back to brand_kit voice fields when null)
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS voice_profile_id INTEGER;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'drafts_voice_profile_fk'
+  ) THEN
+    ALTER TABLE drafts
+      ADD CONSTRAINT drafts_voice_profile_fk
+      FOREIGN KEY (voice_profile_id) REFERENCES voice_profiles(id) ON DELETE SET NULL;
+  END IF;
+END$$;
