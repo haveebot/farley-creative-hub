@@ -114,6 +114,8 @@ import { getActiveConnection } from "@/lib/db/etsy";
 import { draftFirstTouch } from "@/lib/ai/first-touch";
 import { createGmailDraft } from "@/lib/gmail/send";
 import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
+import { ensureProspectForLead } from "@/lib/leads/promote";
+import { logActivity as logProspectActivity } from "@/lib/db/prospects";
 
 const ACTIVITY_KINDS: ActivityKind[] = [
   "email_sent", "call", "meeting", "proposal_sent", "note", "status_change",
@@ -1336,7 +1338,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "draft_first_touch_for_lead",
     description:
-      "Draft a custom first-touch email for a job-board lead and land it in Workspace Gmail Drafts. Reads the full JD (hybrid URL fetch + stored content + operator paste), dissects role/constraint/lever per the composition-templates/job-board-first-touch.md frameworks, composes the email in Collie's voice, and creates the Gmail draft for her review. Stamps the lead with first_touch_* tracking. Does NOT auto-promote to prospect — operator does that explicitly. Returns analysis + subject + body + gmail draft link.",
+      "Draft a custom first-touch email for a job-board lead, land it in Workspace Gmail Drafts, AND auto-promote the lead to an active prospect. Reads the full JD (hybrid URL fetch + stored content + operator paste), dissects role/constraint/lever per the composition-templates/job-board-first-touch.md frameworks, composes the email in Collie's voice, and creates the Gmail draft for her review. Stamps the lead with first_touch_* tracking + creates a prospect with status='lead' linked back. Returns analysis + subject + body + gmail draft link + prospect link.",
     inputSchema: {
       type: "object",
       required: ["lead_id"],
@@ -1349,7 +1351,7 @@ const TOOLS: ToolDef[] = [
         },
       },
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const leadId = args.lead_id as number;
       const lead = await getLead(leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
@@ -1390,6 +1392,12 @@ const TOOLS: ToolDef[] = [
         ? `${lead.notes.trim()}\n\n${noteLine}`
         : noteLine;
 
+      // Auto-promote lead → prospect (same shared helper as the API route)
+      const promotion = await ensureProspectForLead(
+        lead,
+        `agent:${ctx.agentName}`,
+      );
+
       await query(
         `UPDATE leads
             SET first_touch_drafted_at = NOW(),
@@ -1401,6 +1409,18 @@ const TOOLS: ToolDef[] = [
           WHERE id = $5`,
         [gmailDraft.draftId, drafted.subject, drafted.source.origin, newNotes, leadId],
       );
+
+      if (promotion.prospect_id > 0) {
+        await logProspectActivity({
+          prospect_id: promotion.prospect_id,
+          kind: "email_drafted",
+          content: `First-touch: ${drafted.subject} (review in Gmail Drafts)`,
+          draft_id: null,
+          created_by: `agent:${ctx.agentName}`,
+        }).catch((err) =>
+          console.warn("[mcp draft_first_touch] email_drafted activity failed", err),
+        );
+      }
 
       return {
         lead_id: leadId,
@@ -1414,6 +1434,14 @@ const TOOLS: ToolDef[] = [
           sender: workspace.email,
         },
         source: drafted.source,
+        prospect: promotion.prospect_id > 0
+          ? {
+              id: promotion.prospect_id,
+              was_already_converted: promotion.was_already_converted,
+              name: promotion.prospect_name,
+              url: `/pipeline/${promotion.prospect_id}`,
+            }
+          : null,
       };
     },
   },

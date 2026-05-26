@@ -68,15 +68,18 @@ Don't list "branding, social, web, strategy." Pick the ONE thing in their JD tha
 Lead with the OUTCOME ("62% revenue lift on PALMFEST") not the project name alone. See CASE STUDIES section in the brand kit for the full receipt set.
 
 **13. Receipt selection is prospect-type-aware. Pick the parallel that lands.**
-- **Prospect is another AGENCY (media, creative, marketing, ad)** → use **Sage Em** (B2B agency operating system) OR **CrossRef** (multi-tenant data platform). Agencies respect agency-operations work over festival metrics.
+- **Prospect is another AGENCY (media, creative, marketing, ad)** → use **CrossRef** (multi-tenant platform built specifically for rep agencies, demonstrates we build operational software at scale) OR **PALMFEST** (multi-channel campaigns with measurable performance: 77% web-tracked sales, 48% YOY traffic). Agencies respect demonstrable systems + measurable campaign work.
+- **Prospect is a B2B MANUFACTURER / industrial / product firm** → use **Sage Em** (Texas lighting manufacturer — brand + sales + outreach infrastructure to drive specifier and end-customer growth).
 - **Prospect is hospitality / restaurant / venue / experience** → use **Palm Social Club** OR **Cinnamon Shore**.
 - **Prospect is event / festival / experiential / launch** → use **PALMFEST** (62% revenue lift, 76% attendance growth).
 - **Prospect is real estate / property / luxury hospitality** → use **Cinnamon Shore** (37% revenue lift, 224% call volume) OR **RK Projects**.
 - **Prospect is retail / lifestyle / product brand** → use **Palm Republic**.
 - **Prospect is hyperlocal / community / multi-tenant SaaS / platform** → use **Port A Local** OR **CrossRef**.
-- **No strong parallel** → use **Sage Em** operating-system framing rather than forcing a bad fit.
+- **No strong parallel** → use **PALMFEST** for outcome-driven proof OR **Sage Em** for operator-grade systems proof, depending on what the prospect seems to value.
 
 When picking, prioritize parallel-strength over outcome-flash. A receipt with no numbers but tight parallel beats a flashy-but-mismatched receipt every time.
+
+NOTE: Sage Em is the manufacturer side of the manufacturer↔rep-agency relationship. It is NOT an agency-to-agency parallel. Don't use Sage when pitching an agency — use CrossRef (the platform we built FOR rep agencies) instead.
 
 **14. Speak to their quote, not their company.**
 Sage contract principle in sales form: address what they wrote in the JD, not what we assume about their business. If they said the role needs paid social, talk about paid social — even if we'd push them to organic first. Save the strategic reframe for the call.
