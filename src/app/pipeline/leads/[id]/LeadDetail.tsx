@@ -280,9 +280,9 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
         </section>
       )}
 
-      {/* PROMINENT SOURCE — at the top, where the eye lands first */}
+      {/* PROMINENT SOURCE + COMPANY WEBSITE — at the top, where the eye lands first */}
       {lead.source_url && (
-        <section className="p-5 border-2 border-accent/30 rounded-lg bg-accent/5">
+        <section className="p-5 border-2 border-accent/30 rounded-lg bg-accent/5 space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-accent mb-1">
@@ -317,6 +317,66 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
           )}
         </section>
       )}
+
+      {/* COMPANY WEBSITE — discovered during enrichment OR manually set.
+          Operator can click through to verify contacts / find emails. */}
+      <section className="p-5 border border-border rounded-lg bg-surface space-y-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs uppercase tracking-widest text-muted mb-1">
+              Company website
+            </p>
+            {lead.website_url ? (
+              <a
+                href={lead.website_url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-base font-medium text-accent hover:underline truncate inline-block max-w-full"
+                title={lead.website_url}
+              >
+                {hostnameOf(lead.website_url)} <span aria-hidden="true">↗</span>
+              </a>
+            ) : (
+              <p className="text-sm text-muted italic">
+                Not set — will be discovered on Draft first-touch, or set manually below.
+              </p>
+            )}
+          </div>
+          {lead.website_url && (
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href={`${lead.website_url.replace(/\/$/, "")}/contact-us`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition"
+              >
+                /contact-us
+              </a>
+              <a
+                href={`${lead.website_url.replace(/\/$/, "")}/team`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition"
+              >
+                /team
+              </a>
+              <a
+                href={`${lead.website_url.replace(/\/$/, "")}/about`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition"
+              >
+                /about
+              </a>
+            </div>
+          )}
+        </div>
+        <InlineText
+          label="Override URL"
+          value={lead.website_url ?? ""}
+          onSave={(v) => update({ website_url: v.trim() || null } as Partial<Lead>)}
+        />
+      </section>
 
       {/* Source */}
       <section className="p-5 border border-border rounded-lg bg-surface space-y-3">

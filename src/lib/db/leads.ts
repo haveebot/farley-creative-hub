@@ -24,6 +24,8 @@ export type LeadCreate = {
   raw_content?: string;
   notes?: string;
   status?: LeadStatus;
+  /** Company website discovered via enrichment or manually set by operator. */
+  website_url?: string | null;
   found_by: string;
 };
 

@@ -86,6 +86,7 @@ export async function POST(
     lead.business_name
       ? enrichCompany({
           business_name: lead.business_name,
+          website_url: lead.website_url, // skip URL-guess if operator already set one
           source_url: lead.source_url,
           source_title: lead.source_title,
           recipient_context: recipientContextFromLead(lead),
