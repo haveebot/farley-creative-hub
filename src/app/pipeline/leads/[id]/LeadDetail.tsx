@@ -24,14 +24,20 @@ import {
 
 type ConvertStatus = "idle" | "converting" | "error";
 type FirstTouchStatus = "idle" | "drafting" | "drafted" | "error";
+type PopulateStatus = "idle" | "populating" | "populated" | "error";
 
 type FirstTouchResult = {
   analysis: { role: string; constraint: string; lever: string };
   subject: string;
   body: string;
+  recipients: Array<{ email: string; name?: string | null }>;
   gmail: { draftId: string; gmailUrl: string; sender: string };
   source: { origin: string; chars: number; fetch_failed?: boolean };
 };
+
+/** Local roster state — mirrors lead.contacts with operator edits.
+ *  Per-row include flag + editable email. */
+type RosterRow = LeadContact & { include: boolean };
 
 export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const router = useRouter();
@@ -41,6 +47,22 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   const [firstTouchStatus, setFirstTouchStatus] = useState<FirstTouchStatus>("idle");
   const [firstTouchError, setFirstTouchError] = useState<string | null>(null);
   const [firstTouchResult, setFirstTouchResult] = useState<FirstTouchResult | null>(null);
+  const [populateStatus, setPopulateStatus] = useState<PopulateStatus>("idle");
+  const [populateError, setPopulateError] = useState<string | null>(null);
+
+  // Local roster state — derived from lead.contacts on load, edited inline.
+  const [roster, setRoster] = useState<RosterRow[]>(() =>
+    (initialLead.contacts ?? []).map((c) => ({ ...c, include: !!c.email })),
+  );
+
+  // If lead.contacts changes (e.g., after populate), reset roster to it.
+  // We compare a fingerprint to avoid resetting on every render.
+  const contactsFingerprint = JSON.stringify(lead.contacts ?? []);
+  const [lastSyncedFingerprint, setLastSyncedFingerprint] = useState(contactsFingerprint);
+  if (contactsFingerprint !== lastSyncedFingerprint) {
+    setRoster((lead.contacts ?? []).map((c) => ({ ...c, include: !!c.email })));
+    setLastSyncedFingerprint(contactsFingerprint);
+  }
 
   async function update(updates: Partial<Lead>) {
     const res = await fetch(`/api/leads/${lead.id}`, {
@@ -92,7 +114,37 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
     if (res.ok) router.push("/pipeline/leads");
   }
 
+  async function handlePopulateRoster() {
+    setPopulateStatus("populating");
+    setPopulateError(null);
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/populate-roster`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setPopulateError(data.message ?? data.error ?? "Populate failed.");
+        setPopulateStatus("error");
+        return;
+      }
+      setPopulateStatus("populated");
+      if (data.lead) setLead(data.lead); // triggers roster re-sync via fingerprint
+      router.refresh();
+    } catch (err) {
+      setPopulateError((err as Error).message);
+      setPopulateStatus("error");
+    }
+  }
+
   async function handleFirstTouch() {
+    const picked = roster.filter((r) => r.include && r.email);
+    if (picked.length === 0) {
+      setFirstTouchError("Pick at least one recipient from the roster.");
+      setFirstTouchStatus("error");
+      return;
+    }
     setFirstTouchStatus("drafting");
     setFirstTouchError(null);
     setFirstTouchResult(null);
@@ -100,7 +152,18 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
       const res = await fetch(`/api/leads/${lead.id}/draft-first-touch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          recipients: picked.map((r) => ({ email: r.email!, name: r.name })),
+          // Persist any operator email edits back to lead.contacts
+          contacts: roster.map((r) => ({
+            name: r.name,
+            title: r.title,
+            email: r.email,
+            source_url: r.source_url,
+            notes: r.notes,
+            is_ai_top_pick: r.is_ai_top_pick,
+          })),
+        }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -116,6 +179,19 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
       setFirstTouchError((err as Error).message);
       setFirstTouchStatus("error");
     }
+  }
+
+  function setRosterEmail(i: number, email: string) {
+    const next = [...roster];
+    next[i] = { ...next[i], email: email.trim() || null, include: !!email.trim() || next[i].include };
+    setRoster(next);
+  }
+
+  function toggleRosterInclude(i: number) {
+    if (!roster[i].email) return;
+    const next = [...roster];
+    next[i] = { ...next[i], include: !next[i].include };
+    setRoster(next);
   }
 
   const alreadyConverted = lead.status === "converted" && lead.converted_to_prospect_id;
@@ -144,19 +220,6 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
           </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={handleFirstTouch}
-            disabled={firstTouchStatus === "drafting"}
-            className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-            title="Generate a custom first-touch email from the JD — auto-promotes lead to prospect on first run; subsequent runs re-draft with the latest brand voice + roster"
-          >
-            {firstTouchStatus === "drafting"
-              ? "Preparing…"
-              : alreadyDrafted
-                ? "Re-draft first-touch"
-                : "Draft first-touch"}
-          </button>
           {alreadyConverted ? (
             <a
               href={`/pipeline/${lead.converted_to_prospect_id}`}
@@ -190,95 +253,167 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
         <p className="text-sm text-red-600 -mt-3">First-touch: {firstTouchError}</p>
       )}
 
-      {/* FIRST-TOUCH RESULT — drafted email landed in Gmail. Lead stays a
-          lead; operator promotes via the existing Convert button after
-          they actually send the email. */}
-      {(firstTouchResult || alreadyDrafted) && (
-        <section className="p-5 border-2 border-green-500/30 rounded-lg bg-green-500/5 space-y-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-green-700 dark:text-green-400 mb-1">
-                First-touch drafted ✓
+      {/* OUTREACH PANEL — two ordered actions: Populate roster, then Draft. */}
+      <section className="p-5 border-2 border-accent/30 rounded-lg bg-accent/5 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-accent mb-1">
+              Outreach
+            </p>
+            <p className="text-sm text-foreground/80">
+              {roster.length === 0
+                ? "Step 1: populate the roster from the company website. Step 2: pick recipients, draft the email — recipients land on the To: line of the first Gmail draft, no back-fill."
+                : `${roster.length} contact${roster.length !== 1 ? "s" : ""} in the roster. Pick recipients below, then Draft first-touch.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePopulateRoster}
+            disabled={populateStatus === "populating"}
+            className="px-4 py-2 border border-accent text-accent rounded-md text-sm font-medium hover:bg-accent hover:text-white transition disabled:opacity-50 shrink-0"
+          >
+            {populateStatus === "populating"
+              ? "Enriching…"
+              : roster.length > 0
+                ? "Re-populate roster"
+                : "Populate roster"}
+          </button>
+        </div>
+
+        {populateError && <p className="text-xs text-red-600">{populateError}</p>}
+
+        {/* Roster checkboxes + editable emails */}
+        {roster.length > 0 && (
+          <div className="border border-border rounded bg-surface p-4 space-y-3">
+            <p className="text-xs text-muted">
+              Edit emails inline for any contact AI couldn&apos;t extract. Sage multi-TO pattern — all checked contacts land on the To: line of the Gmail draft.
+            </p>
+            <ul className="divide-y divide-border">
+              {roster.map((c, i) => (
+                <li key={`${c.name}-${i}`} className="py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <input
+                      type="checkbox"
+                      id={`roster-${i}`}
+                      checked={c.include}
+                      disabled={!c.email}
+                      onChange={() => toggleRosterInclude(i)}
+                      className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    <label htmlFor={`roster-${i}`} className="min-w-0 flex-1 cursor-pointer">
+                      <p className="text-sm font-medium">
+                        {c.name}
+                        {c.is_ai_top_pick && (
+                          <span className="ml-2 text-[10px] uppercase tracking-widest text-accent">
+                            AI top pick
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted truncate">{c.title || "(no title)"}</p>
+                    </label>
+                  </div>
+                  <div className="pl-7">
+                    <input
+                      type="email"
+                      value={c.email ?? ""}
+                      onChange={(e) => setRosterEmail(i, e.target.value)}
+                      placeholder="Type email (e.g. firstname@company.com)"
+                      className="w-full px-2 py-1 text-xs bg-transparent border border-border rounded font-mono focus:outline-none focus:border-accent transition"
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border">
+              <p className="text-xs text-muted">
+                {roster.filter((r) => r.include && r.email).length} of {roster.length} selected
+                {roster.filter((r) => r.include && r.email).length === 0 && (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    {" "}· need ≥1 with email
+                  </span>
+                )}
               </p>
-              <p className="text-base font-medium">
-                {firstTouchResult?.subject ?? lead.first_touch_subject ?? "(draft created)"}
-              </p>
-              {lead.first_touch_drafted_at && (
-                <p className="text-xs text-muted mt-1">
-                  Drafted {new Date(lead.first_touch_drafted_at).toLocaleString()} · JD via{" "}
-                  {firstTouchResult?.source.origin ?? lead.first_touch_jd_source ?? "unknown"}
+              <button
+                type="button"
+                onClick={handleFirstTouch}
+                disabled={
+                  firstTouchStatus === "drafting" ||
+                  roster.filter((r) => r.include && r.email).length === 0
+                }
+                className="px-5 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+              >
+                {firstTouchStatus === "drafting"
+                  ? "Drafting…"
+                  : alreadyDrafted
+                    ? `Re-draft first-touch (${roster.filter((r) => r.include && r.email).length})`
+                    : `Draft first-touch (${roster.filter((r) => r.include && r.email).length})`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Drafted state — Gmail link + analysis */}
+        {(firstTouchResult || alreadyDrafted) && (
+          <div className="p-4 border border-green-500/30 rounded bg-green-500/5 space-y-3">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-green-700 dark:text-green-400 mb-1">
+                  Gmail draft ready ✓ {firstTouchResult ? `(${firstTouchResult.recipients.length} on To:)` : ""}
                 </p>
+                <p className="text-sm font-medium">
+                  {firstTouchResult?.subject ?? lead.first_touch_subject ?? "(draft)"}
+                </p>
+                {lead.first_touch_drafted_at && (
+                  <p className="text-xs text-muted mt-1">
+                    Drafted {new Date(lead.first_touch_drafted_at).toLocaleString()} · JD via{" "}
+                    {firstTouchResult?.source.origin ?? lead.first_touch_jd_source ?? "unknown"}
+                  </p>
+                )}
+              </div>
+              {(gmailDraftUrl ?? lead.first_touch_gmail_draft_id) && (
+                <a
+                  href={
+                    gmailDraftUrl ??
+                    `https://mail.google.com/mail/u/0/#drafts?compose=${lead.first_touch_gmail_draft_id}`
+                  }
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0 inline-flex items-center gap-2"
+                >
+                  Open Gmail Draft <span aria-hidden="true">↗</span>
+                </a>
               )}
             </div>
-            {(gmailDraftUrl ?? lead.first_touch_gmail_draft_id) && (
-              <a
-                href={
-                  gmailDraftUrl ??
-                  `https://mail.google.com/mail/u/0/#drafts?compose=${lead.first_touch_gmail_draft_id}`
-                }
-                target="_blank"
-                rel="noreferrer noopener"
-                className="px-5 py-2.5 bg-green-600 text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0 inline-flex items-center gap-2"
-              >
-                Open Gmail Draft <span aria-hidden="true">↗</span>
-              </a>
+            {firstTouchResult && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  <div className="p-2 bg-surface rounded border border-border">
+                    <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Role read</p>
+                    <p className="text-foreground/90">{firstTouchResult.analysis.role}</p>
+                  </div>
+                  <div className="p-2 bg-surface rounded border border-border">
+                    <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Constraint</p>
+                    <p className="text-foreground/90">{firstTouchResult.analysis.constraint}</p>
+                  </div>
+                  <div className="p-2 bg-surface rounded border border-border">
+                    <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Lever</p>
+                    <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
+                  </div>
+                </div>
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-xs text-muted hover:text-foreground">
+                    Show body preview
+                  </summary>
+                  <pre className="mt-2 p-3 bg-surface rounded border border-border whitespace-pre-wrap font-sans text-xs">
+                    {firstTouchResult.body}
+                  </pre>
+                </details>
+              </>
             )}
           </div>
-          {firstTouchResult && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                <div className="p-3 bg-surface rounded border border-border">
-                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Role read</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.role}</p>
-                </div>
-                <div className="p-3 bg-surface rounded border border-border">
-                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Constraint</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.constraint}</p>
-                </div>
-                <div className="p-3 bg-surface rounded border border-border">
-                  <p className="text-[10px] uppercase tracking-widest text-muted mb-1">Lever</p>
-                  <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
-                </div>
-              </div>
-              <details className="text-sm">
-                <summary className="cursor-pointer text-xs text-muted hover:text-foreground">
-                  Show body preview
-                </summary>
-                <pre className="mt-3 p-4 bg-surface rounded border border-border whitespace-pre-wrap font-sans text-sm">
-                  {firstTouchResult.body}
-                </pre>
-              </details>
-            </>
-          )}
-
-          {/* Roster — reads from PERSISTED lead.contacts so it survives
-              refreshes + works across machines. Operator edits emails inline. */}
-          {lead.contacts && lead.contacts.length > 0 && (
-            <RosterPicker
-              leadId={lead.id}
-              websiteUrl={lead.website_url}
-              initialContacts={lead.contacts}
-              subject={firstTouchResult?.subject ?? lead.first_touch_subject ?? ""}
-              body={firstTouchResult?.body ?? lead.first_touch_body ?? ""}
-              onApplied={(newUrl, savedContacts) => {
-                if (firstTouchResult) {
-                  setFirstTouchResult({
-                    ...firstTouchResult,
-                    gmail: { ...firstTouchResult.gmail, gmailUrl: newUrl },
-                  });
-                }
-                setLead({ ...lead, contacts: savedContacts });
-              }}
-            />
-          )}
-          {(!lead.contacts || lead.contacts.length === 0) && firstTouchResult && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              ⚠ No roster — enrichment didn&apos;t find any contacts on the company website.
-              {lead.enrichment_notes && ` (${lead.enrichment_notes})`}
-            </p>
-          )}
-        </section>
-      )}
+        )}
+      </section>
 
       {/* PROMINENT SOURCE + COMPANY WEBSITE — at the top, where the eye lands first */}
       {lead.source_url && (
@@ -691,202 +826,6 @@ function PasteToEnrich({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * RosterPicker — operator picks recipients + edits emails inline, then
- * back-fills selected to the existing Gmail draft.
- *
- * Reads from PERSISTED lead.contacts (initialContacts prop) so the roster
- * survives refreshes and works across machines. Email edits are saved
- * back to lead.contacts when operator clicks Apply.
- *
- * No email guessing — operator types in any missing emails manually from
- * their own research (contact page, LinkedIn, etc.).
- */
-function RosterPicker({
-  leadId,
-  websiteUrl,
-  initialContacts,
-  subject,
-  body,
-  onApplied,
-}: {
-  leadId: number;
-  websiteUrl: string | null;
-  initialContacts: LeadContact[];
-  subject: string;
-  body: string;
-  onApplied: (gmailUrl: string, savedContacts: LeadContact[]) => void;
-}) {
-  // Local state mirrors lead.contacts but with editable emails.
-  const [contacts, setContacts] = useState<LeadContact[]>(initialContacts);
-  // Default include: all contacts that already have an email.
-  const [selected, setSelected] = useState<Set<number>>(
-    () => new Set(initialContacts.map((c, i) => (c.email ? i : -1)).filter((i) => i >= 0)),
-  );
-  const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function setEmail(i: number, email: string) {
-    const next = [...contacts];
-    next[i] = { ...next[i], email: email.trim() || null };
-    setContacts(next);
-    setApplied(false);
-    // If they typed an email into a previously-empty row, auto-check it.
-    if (email.trim() && !selected.has(i)) {
-      const nextSel = new Set(selected);
-      nextSel.add(i);
-      setSelected(nextSel);
-    }
-    // If they cleared an email, uncheck.
-    if (!email.trim() && selected.has(i)) {
-      const nextSel = new Set(selected);
-      nextSel.delete(i);
-      setSelected(nextSel);
-    }
-  }
-
-  function toggle(i: number) {
-    if (!contacts[i].email) return;
-    const next = new Set(selected);
-    if (next.has(i)) next.delete(i);
-    else next.add(i);
-    setSelected(next);
-    setApplied(false);
-  }
-
-  const picked = Array.from(selected)
-    .map((i) => contacts[i])
-    .filter((c) => c && c.email);
-
-  async function apply() {
-    if (picked.length === 0) {
-      setError("Need at least one contact with an email.");
-      return;
-    }
-    if (!body) {
-      setError("Email body is missing — re-run Draft first-touch.");
-      return;
-    }
-    setApplying(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/leads/${leadId}/set-recipients`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipients: picked.map((c) => ({ email: c.email!, name: c.name })),
-          subject,
-          body,
-          contacts, // persist edited emails back to lead.contacts
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.message ?? data.error ?? "Apply failed");
-        return;
-      }
-      onApplied(data.gmail.gmailUrl, contacts);
-      setApplied(true);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  return (
-    <div className="border border-border rounded-lg bg-surface p-4 space-y-3">
-      <div>
-        <p className="text-xs uppercase tracking-widest text-muted mb-1">Roster</p>
-        <p className="text-sm text-foreground/80">
-          {contacts.length} contact{contacts.length !== 1 ? "s" : ""}
-          {websiteUrl && (
-            <>
-              {" "}from{" "}
-              <a
-                href={websiteUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline hover:text-foreground"
-              >
-                {new URL(websiteUrl).hostname}
-              </a>
-            </>
-          )}
-        </p>
-        <p className="text-xs text-muted mt-1">
-          Sage multi-TO pattern — all checked contacts go on the To: line of one Gmail draft. Type missing emails inline (no guessing — paste from your own research).
-        </p>
-      </div>
-
-      <ul className="divide-y divide-border">
-        {contacts.map((c, i) => {
-          const isSelected = selected.has(i);
-          return (
-            <li key={`${c.name}-${i}`} className="py-2.5 space-y-1.5">
-              <div className="flex items-center gap-3 flex-wrap">
-                <input
-                  type="checkbox"
-                  id={`roster-${i}`}
-                  checked={isSelected}
-                  disabled={!c.email}
-                  onChange={() => toggle(i)}
-                  className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
-                />
-                <label htmlFor={`roster-${i}`} className="min-w-0 flex-1 cursor-pointer">
-                  <p className="text-sm font-medium">
-                    {c.name}
-                    {c.is_ai_top_pick && (
-                      <span className="ml-2 text-[10px] uppercase tracking-widest text-accent">
-                        AI top pick
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-muted truncate">{c.title || "(no title)"}</p>
-                </label>
-              </div>
-              <div className="pl-7">
-                <input
-                  type="email"
-                  value={c.email ?? ""}
-                  onChange={(e) => setEmail(i, e.target.value)}
-                  placeholder="Type email (e.g. firstname@company.com)"
-                  className="w-full px-2 py-1 text-xs bg-transparent border border-border rounded font-mono focus:outline-none focus:border-accent transition"
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border">
-        <p className="text-xs text-muted">
-          {picked.length} of {contacts.length} selected
-          {picked.length === 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
-              {" "}· need ≥1 with email
-            </span>
-          )}
-        </p>
-        <button
-          type="button"
-          onClick={apply}
-          disabled={applying || picked.length === 0}
-          className="px-5 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-        >
-          {applying
-            ? "Adding…"
-            : applied
-              ? "Added ✓"
-              : `Add ${picked.length} recipient${picked.length !== 1 ? "s" : ""} to Gmail draft`}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }
