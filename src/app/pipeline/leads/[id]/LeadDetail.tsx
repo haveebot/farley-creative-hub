@@ -80,6 +80,7 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
   }
 
   const alreadyConverted = lead.status === "converted" && lead.converted_to_prospect_id;
+  const contentIsThin = (lead.raw_content?.length ?? 0) < 600;
 
   return (
     <div className="space-y-6">
@@ -130,6 +131,44 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
       </section>
       {convertError && (
         <p className="text-sm text-red-600 -mt-3">{convertError}</p>
+      )}
+
+      {/* PROMINENT SOURCE — at the top, where the eye lands first */}
+      {lead.source_url && (
+        <section className="p-5 border-2 border-accent/30 rounded-lg bg-accent/5">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-widest text-accent mb-1">
+                Source posting
+              </p>
+              {lead.source_title && (
+                <p className="text-base font-medium truncate" title={lead.source_title}>
+                  {lead.source_title}
+                </p>
+              )}
+              <p
+                className="text-xs text-muted truncate"
+                title={lead.source_url}
+              >
+                {hostnameOf(lead.source_url)}
+              </p>
+            </div>
+            <a
+              href={lead.source_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="px-5 py-2.5 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition shrink-0 inline-flex items-center gap-2"
+            >
+              Open full posting <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          {contentIsThin && (
+            <PasteToEnrich
+              leadId={lead.id}
+              onEnriched={(updated) => setLead(updated)}
+            />
+          )}
+        </section>
       )}
 
       {/* Source */}
@@ -324,3 +363,127 @@ const inputClasses =
 
 const smallSelectClasses =
   "px-3 py-1.5 bg-transparent border border-border rounded-md text-sm";
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * When a lead's raw_content is suspiciously short (digest snippet only),
+ * surface a paste-and-enrich affordance: operator opens the source URL,
+ * copies the full posting body, pastes here, AI re-parses + backfills
+ * structured fields without clobbering operator edits.
+ */
+function PasteToEnrich({
+  leadId,
+  onEnriched,
+}: {
+  leadId: number;
+  onEnriched: (lead: Lead) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function submit() {
+    if (text.trim().length < 100) {
+      setError("Paste at least ~100 chars of the posting body.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/enrich`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.message ?? data.error ?? "Enrichment failed");
+        return;
+      }
+      onEnriched(data.lead);
+      const filled = (data.enriched?.fields_backfilled ?? []) as string[];
+      setResult(
+        filled.length > 0
+          ? `Enriched — backfilled: ${filled.join(", ")}.`
+          : "Raw content updated.",
+      );
+      setText("");
+      setExpanded(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-accent/30">
+      {!expanded ? (
+        <div className="flex items-start gap-3 flex-wrap">
+          <p className="text-xs text-muted leading-relaxed flex-1 min-w-0">
+            <strong className="text-foreground/80">Content looks thin.</strong>{" "}
+            Most digest sources (Indeed, LinkedIn) block server-side fetching,
+            so we couldn&apos;t auto-pull the full posting body. Paste it here
+            once and the AI fills in the structured fields.
+          </p>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="text-xs underline text-accent hover:text-foreground shrink-0"
+          >
+            + Paste full posting →
+          </button>
+          {result && (
+            <p className="text-xs text-accent italic mt-1">{result}</p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={8}
+            placeholder="Paste the full job posting / RFP / article body here…"
+            className="w-full px-3 py-2 bg-transparent border border-border rounded-md text-sm focus:outline-none focus:border-accent transition font-mono"
+            autoFocus
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || text.length < 100}
+              className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+            >
+              {submitting ? "Enriching…" : "Enrich lead →"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(false);
+                setError(null);
+                setText("");
+              }}
+              className="text-xs text-muted underline hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <span className="text-xs text-muted ml-auto">
+              {text.length.toLocaleString()} chars
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
