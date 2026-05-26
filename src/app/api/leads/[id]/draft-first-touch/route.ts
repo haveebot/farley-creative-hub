@@ -1,30 +1,20 @@
 /**
  * POST /api/leads/[id]/draft-first-touch
  *
- * SIMPLE single-action: AI drafts an email tailored to the JD, lands it
- * in the connected Workspace Gmail Drafts folder. That's it.
+ * Single-click first-touch flow:
+ *   1. Draft the email via Claude (composition template + brand + voice)
+ *   2. Enrich the company → in-memory roster (NO persistence, NO promote)
+ *   3. Create the Gmail draft with NO recipients yet (operator picks
+ *      next via the roster UI → back-fill endpoint)
+ *   4. Stamp lead.first_touch_* tracking + return roster + draft link
  *
- * What this endpoint does NOT do:
- *   - Does NOT auto-promote the lead to a prospect (operator does that
- *     manually via the existing Convert button once they actually send
- *     the email — drafting is not contacting).
- *   - Does NOT enrich the company or build a roster (that's a separate
- *     concern that belongs on the prospect side, not pre-contact).
- *   - Does NOT pick recipients from a roster (operator fills in the To:
- *     field in Gmail before sending — best-effort guess from the JD if
- *     a literal email address is visible there).
+ * Lead is NOT promoted to a prospect. The roster is in-memory only
+ * (returned in the response, not written to prospect_contacts). Drafting
+ * is not contacting; promotion happens later via the existing Convert
+ * button when the operator decides.
  *
- * Flow:
- *   1. Resolve JD content via hybrid fetch (URL → stored → operator paste)
- *   2. Draft email via Claude (composition template + brand kit + voice)
- *   3. Best-effort regex-extract a recipient email from the JD (skipped
- *      if no email is in the JD or if it's a noreply address)
- *   4. Create the Gmail draft
- *   5. Stamp lead.first_touch_* tracking columns
- *   6. Return the Gmail draft link + email preview
- *
- * Request body (optional):
- *   { operator_pasted?: string }  — full JD text if URL + stored are thin
+ * Roster back-fill lives at POST /api/leads/[id]/set-recipients which
+ * updates the existing Gmail draft with the operator's chosen TO list.
  */
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/require";
@@ -34,16 +24,14 @@ import { getDefaultVoiceProfile } from "@/lib/db/voice-profiles";
 import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
 import { createGmailDraft } from "@/lib/gmail/send";
 import { draftFirstTouch } from "@/lib/ai/first-touch";
+import { enrichCompany } from "@/lib/ai/enrich-company";
 import { query } from "@/lib/db/client";
+import type { Lead } from "@/lib/leads-shared";
 
-const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-
-function guessRecipientEmail(jd: string): string | null {
-  const match = jd.match(EMAIL_RE);
-  if (!match) return null;
-  const email = match[0].toLowerCase();
-  if (/(noreply|no-reply|do-not-reply|donotreply)/.test(email)) return null;
-  return match[0];
+function recipientContextFromLead(lead: Lead): string {
+  const role = lead.source_title ?? "unspecified role";
+  const business = lead.business_name ?? "the company";
+  return `${business} is hiring for: "${role}". This outreach is one email to multiple recipients on the TO line (Sage pattern: principals + function leader + relevant peers simultaneously). Surface ALL leadership-level contacts you can find: principal/founder/CEO, the function leader the new hire would report to (CMO for Marketing roles, Creative Director for Design roles), and any other senior leaders. Operator picks which to include.`;
 }
 
 export async function POST(
@@ -81,33 +69,50 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    // Empty body is fine.
+    // empty body is fine
   }
 
   const brand = await getStudioKit();
   const voice = await getDefaultVoiceProfile();
 
-  let drafted;
-  try {
-    drafted = await draftFirstTouch({
+  // 1. Draft the email (+ optionally enrich in parallel)
+  const [draftedResult, enrichmentResult] = await Promise.allSettled([
+    draftFirstTouch({
       lead,
       brand,
       voice,
       operator_pasted: body.operator_pasted,
-    });
-  } catch (err) {
+    }),
+    lead.business_name
+      ? enrichCompany({
+          business_name: lead.business_name,
+          source_url: lead.source_url,
+          source_title: lead.source_title,
+          recipient_context: recipientContextFromLead(lead),
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (draftedResult.status === "rejected") {
     return NextResponse.json(
-      { ok: false, error: "draft-failed", message: (err as Error).message },
+      {
+        ok: false,
+        error: "draft-failed",
+        message: (draftedResult.reason as Error).message,
+      },
       { status: 400 },
     );
   }
+  const drafted = draftedResult.value;
+  const enrichment =
+    enrichmentResult.status === "fulfilled" ? enrichmentResult.value : null;
 
-  const recipientGuess = guessRecipientEmail(drafted.raw_content_used);
-
+  // 2. Create the Gmail draft with NO recipients yet — operator picks via
+  // the roster UI which back-fills via /set-recipients.
   let gmailDraft;
   try {
     gmailDraft = await createGmailDraft({
-      to: recipientGuess ?? "",
+      to: "",
       subject: drafted.subject,
       text: drafted.body,
     });
@@ -125,6 +130,7 @@ export async function POST(
     );
   }
 
+  // 3. Stamp the lead (do NOT promote)
   const noteLine = `[first-touch drafted ${new Date().toISOString().slice(0, 10)}] ${drafted.subject} (gmail draft ${gmailDraft.draftId}; JD via ${drafted.source.origin})`;
   const newNotes = lead.notes.trim()
     ? `${lead.notes.trim()}\n\n${noteLine}`
@@ -150,7 +156,26 @@ export async function POST(
     analysis: drafted.analysis,
     subject: drafted.subject,
     body: drafted.body,
-    recipient_guess: recipientGuess,
+    /** In-memory roster — NOT persisted to prospect_contacts. Operator
+     *  picks emails from this and POSTs them to /set-recipients which
+     *  back-fills the existing Gmail draft. */
+    roster: enrichment
+      ? {
+          website_url: enrichment.website_url,
+          website_confidence: enrichment.website_confidence,
+          scraped_pages: enrichment.scraped_pages,
+          best_pick_reason: enrichment.best_pick_reason,
+          notes: enrichment.notes,
+          candidates: enrichment.candidates.map((c, i) => ({
+            name: c.name,
+            title: c.title,
+            email: c.email,
+            source_url: c.source_url,
+            notes: c.notes,
+            is_ai_top_pick: i === enrichment.best_pick_index,
+          })),
+        }
+      : null,
     gmail: {
       draftId: gmailDraft.draftId,
       gmailUrl,

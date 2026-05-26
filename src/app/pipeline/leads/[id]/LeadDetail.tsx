@@ -24,11 +24,29 @@ import {
 type ConvertStatus = "idle" | "converting" | "error";
 type FirstTouchStatus = "idle" | "drafting" | "drafted" | "error";
 
+type RosterCandidate = {
+  name: string;
+  title: string | null;
+  email: string | null;
+  source_url: string;
+  notes: string | null;
+  is_ai_top_pick: boolean;
+};
+
+type Roster = {
+  website_url: string | null;
+  website_confidence: string;
+  scraped_pages: string[];
+  best_pick_reason: string;
+  notes: string;
+  candidates: RosterCandidate[];
+};
+
 type FirstTouchResult = {
   analysis: { role: string; constraint: string; lever: string };
   subject: string;
   body: string;
-  recipient_guess: string | null;
+  roster: Roster | null;
   gmail: { draftId: string; gmailUrl: string; sender: string };
   source: { origin: string; chars: number; fetch_failed?: boolean };
 };
@@ -240,6 +258,25 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   <p className="text-foreground/90">{firstTouchResult.analysis.lever}</p>
                 </div>
               </div>
+              {firstTouchResult.roster && firstTouchResult.roster.candidates.length > 0 ? (
+                <RosterPicker
+                  leadId={lead.id}
+                  roster={firstTouchResult.roster}
+                  subject={firstTouchResult.subject}
+                  body={firstTouchResult.body}
+                  onApplied={(newUrl) => {
+                    setFirstTouchResult({
+                      ...firstTouchResult,
+                      gmail: { ...firstTouchResult.gmail, gmailUrl: newUrl },
+                    });
+                  }}
+                />
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  ⚠ No roster — couldn&apos;t find contacts on the company website. Fill in the To: field directly in Gmail.
+                  {firstTouchResult.roster?.notes && ` (${firstTouchResult.roster.notes})`}
+                </p>
+              )}
               <details className="text-sm">
                 <summary className="cursor-pointer text-xs text-muted hover:text-foreground">
                   Show body preview
@@ -248,19 +285,6 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
                   {firstTouchResult.body}
                 </pre>
               </details>
-              {firstTouchResult.recipient_guess ? (
-                <p className="text-xs text-muted">
-                  Recipient auto-filled from JD: <code>{firstTouchResult.recipient_guess}</code>.
-                  Verify in Gmail before sending.
-                </p>
-              ) : (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠ No recipient email in the JD — fill in the To: field in Gmail before sending.
-                </p>
-              )}
-              <p className="text-xs text-muted pt-2 border-t border-border">
-                Lead stays as a lead. Once you've actually sent the email from Gmail, click <strong>Convert to prospect</strong> above to promote.
-              </p>
             </>
           )}
         </section>
@@ -617,6 +641,183 @@ function PasteToEnrich({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * RosterPicker — operator checks recipients then back-fills them into
+ * the existing Gmail draft. Lead is NOT promoted; contacts are NOT
+ * persisted (in-memory only — re-clicking Draft re-runs enrichment).
+ *
+ * One button: "Add recipients to Gmail draft" — POSTs to
+ * /api/leads/[id]/set-recipients which deletes the empty-TO draft and
+ * recreates it with the chosen TO line (same subject + body).
+ */
+function RosterPicker({
+  leadId,
+  roster,
+  subject,
+  body,
+  onApplied,
+}: {
+  leadId: number;
+  roster: Roster;
+  subject: string;
+  body: string;
+  onApplied: (gmailUrl: string) => void;
+}) {
+  const initial = new Set<number>();
+  roster.candidates.forEach((c, i) => {
+    if (c.email) initial.add(i);
+  });
+  const [selected, setSelected] = useState<Set<number>>(initial);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(i: number) {
+    const next = new Set(selected);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    setSelected(next);
+    setApplied(false);
+  }
+
+  const picked = Array.from(selected)
+    .map((i) => roster.candidates[i])
+    .filter((c) => c && c.email);
+
+  async function apply() {
+    if (picked.length === 0) {
+      setError("Pick at least one contact with an email.");
+      return;
+    }
+    setApplying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/set-recipients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipients: picked.map((c) => ({ email: c.email!, name: c.name })),
+          subject,
+          body,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.message ?? data.error ?? "Apply failed");
+        return;
+      }
+      onApplied(data.gmail.gmailUrl);
+      setApplied(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-surface p-4 space-y-3">
+      <div>
+        <p className="text-xs uppercase tracking-widest text-muted mb-1">Roster</p>
+        <p className="text-sm text-foreground/80">
+          {roster.candidates.length} contact{roster.candidates.length !== 1 ? "s" : ""} from{" "}
+          {roster.website_url ? (
+            <a
+              href={roster.website_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-foreground"
+            >
+              {new URL(roster.website_url).hostname}
+            </a>
+          ) : (
+            "the company website"
+          )}
+          {roster.scraped_pages.length > 1 && (
+            <span className="text-xs text-muted">
+              {" "}· scraped {roster.scraped_pages.length} pages
+            </span>
+          )}
+        </p>
+        <p className="text-xs text-muted mt-1">
+          Sage multi-TO pattern — all checked contacts go on the To: line of the existing Gmail draft.
+        </p>
+      </div>
+
+      <ul className="divide-y divide-border">
+        {roster.candidates.map((c, i) => {
+          const isSelected = selected.has(i);
+          const noEmail = !c.email;
+          return (
+            <li key={i} className="py-2 flex items-center gap-3 flex-wrap">
+              <input
+                type="checkbox"
+                id={`roster-${i}`}
+                checked={isSelected}
+                disabled={noEmail}
+                onChange={() => !noEmail && toggle(i)}
+                className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
+              />
+              <label htmlFor={`roster-${i}`} className="min-w-0 flex-1 cursor-pointer">
+                <p className="text-sm font-medium">
+                  {c.name}
+                  {c.is_ai_top_pick && (
+                    <span className="ml-2 text-[10px] uppercase tracking-widest text-accent">
+                      AI top pick
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {c.title || "(no title)"}
+                  {c.email ? (
+                    <>
+                      {" "}· <code>{c.email}</code>
+                    </>
+                  ) : (
+                    <>
+                      {" "}·{" "}
+                      <span className="text-amber-600 dark:text-amber-400">no email — skipped</span>
+                    </>
+                  )}
+                </p>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-border">
+        <p className="text-xs text-muted">
+          {picked.length} selected
+          {picked.length === 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {" "}· need ≥1 with email
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={apply}
+          disabled={applying || picked.length === 0}
+          className="px-5 py-2 bg-accent text-white rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+        >
+          {applying
+            ? "Adding…"
+            : applied
+              ? "Added ✓"
+              : `Add recipients to Gmail draft (${picked.length})`}
+        </button>
+      </div>
+      {roster.best_pick_reason && (
+        <p className="text-xs text-muted italic">
+          AI top pick rationale: {roster.best_pick_reason}
+        </p>
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }
