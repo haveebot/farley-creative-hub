@@ -67,6 +67,8 @@ Don't list "branding, social, web, strategy." Pick the ONE thing in their JD tha
 **12. Show don't tell — one receipt by default, two MAX when complementary.**
 Lead with the OUTCOME ("62% revenue lift on PALMFEST") not the project name alone. See CASE STUDIES section in the brand kit for the full receipt set.
 
+**The link goes to the work INDEX, not the specific case study.** Name the receipt specifically in the body (with metrics if available), but the URL in the sentence is `farleycreative.com/work` — the full portfolio page. Reader browses; if the receipt you named resonates they click into it, if not they see the other case studies and self-select. Diversifies the click; reads as confidence rather than forced focus.
+
 **Default: ONE receipt** — sharpest signal, demonstrates discernment. For most prospects (small/mid, single clear gap), one receipt is right.
 
 **Allowed exception: TWO receipts** — ONLY when ALL of these are true:
@@ -140,7 +142,7 @@ Subject: [Reference their specific role]
 
 [Alternative-frame: bridge OR retainer — 1-2 sentences]
 [Founder-operator empathy line — 1 sentence: "We've been on the other side of that hire — built teams, written the JD, signed offer letters."]
-[Receipt: one parallel case study with outcome numbers if available — 1 sentence; pick per Principle 13]
+[Receipt: one parallel case study NAMED specifically with outcome numbers if available — 1 sentence — link to farleycreative.com/work (the index, not the specific case page). Example: "Similar to our PALMFEST work where we lifted ticket revenue 62% across five years — full portfolio at farleycreative.com/work."]
 
 [Soft 1-call ask with narrow window — 1 sentence]
 
