@@ -21,6 +21,7 @@ import DailyBriefing from "./DailyBriefing";
 import Greeting from "./Greeting";
 import PipelineFunnel from "./PipelineFunnel";
 import TopNav from "./TopNav";
+import WebTrafficCard from "./WebTrafficCard";
 
 export const dynamic = "force-dynamic";
 
@@ -298,6 +299,10 @@ export default async function Home() {
             </ul>
           </section>
         )}
+
+        <section className="max-w-5xl mx-auto mt-10">
+          <WebTrafficCard />
+        </section>
 
         <PipelineFunnel
           prospects={allProspects}
