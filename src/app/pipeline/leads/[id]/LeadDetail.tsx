@@ -237,10 +237,24 @@ export default function LeadDetail({ initialLead }: { initialLead: Lead }) {
               {convertStatus === "converting" ? "Converting…" : "Convert to prospect"}
             </button>
           )}
+          {lead.status !== "dismissed" && lead.status !== "converted" && (
+            <button
+              type="button"
+              onClick={async () => {
+                await update({ status: "dismissed" });
+                router.push("/pipeline/leads");
+              }}
+              className="px-4 py-2 border border-border text-muted rounded-md text-sm font-medium hover:border-amber-600 hover:text-amber-700 dark:hover:text-amber-400 transition"
+              title="Pass on this lead — moves to Dismissed (hidden from default view; reversible via the Dismissed filter)"
+            >
+              Pass on lead
+            </button>
+          )}
           <button
             type="button"
             onClick={handleDelete}
-            className="text-sm text-red-600 hover:underline"
+            className="text-sm text-red-600 hover:underline ml-auto"
+            title="Delete permanently — only for spam, duplicates, or parser errors. For 'no thanks' use Pass."
           >
             Delete
           </button>

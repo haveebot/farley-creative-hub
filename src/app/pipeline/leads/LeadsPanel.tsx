@@ -4,19 +4,33 @@ import { useState } from "react";
 import {
   LEAD_SOURCE_LABELS,
   LEAD_SOURCE_TYPES,
-  LEAD_STATUSES,
   LEAD_STATUS_LABELS,
   type Lead,
   type LeadSourceType,
   type LeadStatus,
 } from "@/lib/leads-shared";
 
+/** Tab-level view buckets — proper inbox-style triage.
+ *  Active = anything that needs action.
+ *  Dismissed = passed leads (kept for de-dup + audit, hidden from default).
+ *  Converted = promoted to prospect (now lives in the pipeline view).
+ *  All = unfiltered, for searches. */
+type ViewTab = "active" | "dismissed" | "converted" | "all";
+
+const ACTIVE_STATUSES: LeadStatus[] = ["new", "reviewing", "qualified"];
+
+function inTab(status: LeadStatus, tab: ViewTab): boolean {
+  if (tab === "all") return true;
+  if (tab === "active") return ACTIVE_STATUSES.includes(status);
+  return status === tab;
+}
+
 export default function LeadsPanel({
   initialLeads,
 }: {
   initialLeads: Lead[];
 }) {
-  const [filterStatus, setFilterStatus] = useState<LeadStatus | "all">("all");
+  const [tab, setTab] = useState<ViewTab>("active");
   const [filterSource, setFilterSource] = useState<LeadSourceType | "all">("all");
   const [filterState, setFilterState] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
@@ -27,8 +41,15 @@ export default function LeadsPanel({
 
   const searchTerm = search.trim().toLowerCase();
 
+  const tabCounts = {
+    active: initialLeads.filter((l) => ACTIVE_STATUSES.includes(l.status)).length,
+    dismissed: initialLeads.filter((l) => l.status === "dismissed").length,
+    converted: initialLeads.filter((l) => l.status === "converted").length,
+    all: initialLeads.length,
+  };
+
   const filtered = initialLeads.filter((l) => {
-    if (filterStatus !== "all" && l.status !== filterStatus) return false;
+    if (!inTab(l.status, tab)) return false;
     if (filterSource !== "all" && l.source_type !== filterSource) return false;
     if (filterState !== "all" && l.state !== filterState) return false;
     if (searchTerm) {
@@ -78,17 +99,33 @@ export default function LeadsPanel({
         </a>
       </div>
 
+      {/* Tab bar — Active is default; Dismissed/Converted hidden behind a click */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+        {(
+          [
+            ["active", "Active"],
+            ["dismissed", "Dismissed"],
+            ["converted", "Converted"],
+            ["all", "All"],
+          ] as Array<[ViewTab, string]>
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={`px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+              tab === k
+                ? "text-accent border-accent"
+                : "text-muted border-transparent hover:text-foreground"
+            }`}
+          >
+            {label}{" "}
+            <span className="text-xs text-muted ml-0.5">({tabCounts[k]})</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as LeadStatus | "all")}
-          className={filterClasses}
-        >
-          <option value="all">All statuses</option>
-          {LEAD_STATUSES.map((s) => (
-            <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
-          ))}
-        </select>
         <select
           value={filterSource}
           onChange={(e) => setFilterSource(e.target.value as LeadSourceType | "all")}
@@ -112,7 +149,7 @@ export default function LeadsPanel({
           </select>
         )}
         <span className="text-xs text-muted ml-2">
-          {filtered.length} of {initialLeads.length}
+          {filtered.length} shown
           {searchTerm && ` matching "${searchTerm}"`}
         </span>
       </div>
@@ -121,7 +158,9 @@ export default function LeadsPanel({
         <p className="text-sm text-muted p-8 border border-dashed border-border rounded-lg text-center">
           {initialLeads.length === 0
             ? "No leads yet. Paste a job posting, article, or RFP to capture your first signal."
-            : "No leads match the current filters."}
+            : tab === "active"
+              ? "🎉 Active queue is clear. Switch to the Dismissed or Converted tab to review past leads."
+              : "No leads match the current filters in this tab."}
         </p>
       ) : (
         <ul className="space-y-3">
