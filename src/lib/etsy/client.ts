@@ -41,7 +41,9 @@ export async function etsyFetch<T = unknown>(
   init: RequestInit = {},
 ): Promise<T> {
   const apiKey = process.env.ETSY_CLIENT_ID;
+  const sharedSecret = process.env.ETSY_CLIENT_SECRET;
   if (!apiKey) throw new Error("ETSY_CLIENT_ID not set");
+  if (!sharedSecret) throw new Error("ETSY_CLIENT_SECRET not set");
 
   const accessToken = await getValidAccessToken();
   const url = path.startsWith("http") ? path : `${ETSY_API_BASE}${path}`;
@@ -50,7 +52,8 @@ export async function etsyFetch<T = unknown>(
     ...init,
     headers: {
       ...(init.headers ?? {}),
-      "x-api-key": apiKey,
+      // Etsy v3 expects "keystring:shared_secret" for authenticated calls
+      "x-api-key": `${apiKey}:${sharedSecret}`,
       Authorization: `Bearer ${accessToken}`,
     },
   });

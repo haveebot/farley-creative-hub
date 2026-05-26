@@ -135,11 +135,13 @@ export async function fetchPrimaryShop(
   userId: number,
 ): Promise<{ shop_id: number; shop_name: string } | null> {
   const apiKey = process.env.ETSY_CLIENT_ID;
+  const sharedSecret = process.env.ETSY_CLIENT_SECRET;
   if (!apiKey) throw new Error("ETSY_CLIENT_ID not set");
+  if (!sharedSecret) throw new Error("ETSY_CLIENT_SECRET not set");
 
   const res = await fetch(`${ETSY_SHOPS_URL}/${userId}/shops`, {
     headers: {
-      "x-api-key": apiKey,
+      "x-api-key": `${apiKey}:${sharedSecret}`,
       Authorization: `Bearer ${accessToken}`,
     },
   });
