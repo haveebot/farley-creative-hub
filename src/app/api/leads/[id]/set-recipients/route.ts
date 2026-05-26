@@ -67,6 +67,16 @@ export async function POST(
     recipients?: Array<{ email?: string; name?: string }>;
     subject?: string;
     body?: string;
+    /** Optional: full contacts list to persist back to lead.contacts.
+     *  When provided, operator edits to emails get saved. */
+    contacts?: Array<{
+      name: string;
+      title?: string | null;
+      email?: string | null;
+      source_url?: string;
+      notes?: string | null;
+      is_ai_top_pick?: boolean;
+    }>;
   };
   try {
     body = await request.json();
@@ -123,10 +133,29 @@ export async function POST(
     );
   }
 
-  await query(
-    `UPDATE leads SET first_touch_gmail_draft_id = $1, updated_at = NOW() WHERE id = $2`,
-    [gmailDraft.draftId, numId],
-  );
+  // If operator edited the contacts list inline, persist it back so the
+  // emails stick across refreshes / machines.
+  if (Array.isArray(body.contacts)) {
+    const normalized = body.contacts
+      .filter((c) => c && typeof c.name === "string")
+      .map((c) => ({
+        name: c.name,
+        title: c.title ?? null,
+        email: c.email ?? null,
+        source_url: c.source_url ?? "",
+        notes: c.notes ?? null,
+        is_ai_top_pick: !!c.is_ai_top_pick,
+      }));
+    await query(
+      `UPDATE leads SET first_touch_gmail_draft_id = $1, contacts = $2, updated_at = NOW() WHERE id = $3`,
+      [gmailDraft.draftId, JSON.stringify(normalized), numId],
+    );
+  } else {
+    await query(
+      `UPDATE leads SET first_touch_gmail_draft_id = $1, updated_at = NOW() WHERE id = $2`,
+      [gmailDraft.draftId, numId],
+    );
+  }
 
   return NextResponse.json({
     ok: true,

@@ -68,7 +68,27 @@ export type Lead = {
   first_touch_gmail_draft_id: string | null;
   first_touch_subject: string | null;
   first_touch_jd_source: string | null;
+  /** Company website discovered via enrichment. Persisted so the operator
+   *  doesn't have to re-enrich on every visit. */
+  website_url: string | null;
+  /** Enriched contact roster (name/title/email/notes). Persisted JSON.
+   *  Operator can edit emails manually on the lead detail page. */
+  contacts: LeadContact[];
+  enrichment_notes: string | null;
+  /** Persisted email body so the roster picker can re-apply recipients
+   *  to Gmail across page loads / machine changes without re-running
+   *  the AI draft. */
+  first_touch_body: string | null;
   found_by: string;
   created_at: Date;
   updated_at: Date;
+};
+
+export type LeadContact = {
+  name: string;
+  title: string | null;
+  email: string | null;
+  source_url: string;
+  notes: string | null;
+  is_ai_top_pick?: boolean;
 };

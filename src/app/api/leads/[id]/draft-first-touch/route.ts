@@ -136,16 +136,44 @@ export async function POST(
     ? `${lead.notes.trim()}\n\n${noteLine}`
     : noteLine;
 
+  // Persist enrichment so the roster survives refreshes / machine changes.
+  // Stored on the LEAD (not promoted to a prospect). Operator manually
+  // converts when ready.
+  const contactsJson = enrichment
+    ? enrichment.candidates.map((c, i) => ({
+        name: c.name,
+        title: c.title,
+        email: c.email,
+        source_url: c.source_url,
+        notes: c.notes,
+        is_ai_top_pick: i === enrichment.best_pick_index,
+      }))
+    : [];
+
   await query(
     `UPDATE leads
         SET first_touch_drafted_at = NOW(),
             first_touch_gmail_draft_id = $1,
             first_touch_subject = $2,
-            first_touch_jd_source = $3,
-            notes = $4,
+            first_touch_body = $3,
+            first_touch_jd_source = $4,
+            notes = $5,
+            website_url = COALESCE($6, website_url),
+            contacts = $7,
+            enrichment_notes = $8,
             updated_at = NOW()
-      WHERE id = $5`,
-    [gmailDraft.draftId, drafted.subject, drafted.source.origin, newNotes, numId],
+      WHERE id = $9`,
+    [
+      gmailDraft.draftId,
+      drafted.subject,
+      drafted.body,
+      drafted.source.origin,
+      newNotes,
+      enrichment?.website_url ?? null,
+      JSON.stringify(contactsJson),
+      enrichment?.notes ?? null,
+      numId,
+    ],
   );
 
   const updated = await getLead(numId);

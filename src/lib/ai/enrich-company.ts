@@ -37,6 +37,9 @@ function getClient(): Anthropic {
 export type ContactCandidate = {
   name: string;
   title: string | null;
+  /** Email literally visible on a scraped page. Null when not found.
+   *  We do NOT guess emails — operator manually adds them on the lead
+   *  detail page if extraction missed them. */
   email: string | null;
   source_url: string;
   notes: string | null;
@@ -71,7 +74,27 @@ export type EnrichmentInput = {
 };
 
 const FETCH_TIMEOUT_MS = 10_000;
-const MAX_TEAM_PAGES = 5;
+const MAX_TEAM_PAGES = 8;
+
+/** Common paths where companies put contact info, leadership, team lists.
+ *  Tried unconditionally on top of Claude's homepage-link picks — companies
+ *  often have these even when they're not linked from the homepage. */
+const COMMON_TEAM_PATHS = [
+  "/contact",
+  "/contact-us",
+  "/contact-us/",
+  "/contactus",
+  "/about",
+  "/about-us",
+  "/about/",
+  "/team",
+  "/team/",
+  "/our-team",
+  "/leadership",
+  "/people",
+  "/who-we-are",
+  "/company",
+];
 
 function stripJson(text: string): string {
   return text
@@ -324,14 +347,30 @@ export async function enrichCompany(
   }
   scraped_pages.push(websiteUrl);
 
-  // Step 3: identify team / about / leadership pages
-  const teamUrls = await identifyTeamPages(websiteUrl, homepageText);
+  // Step 3: identify team / about / leadership / contact pages.
+  // Combine TWO strategies:
+  //   a) Claude-suggested from homepage links
+  //   b) Common paths (contact-us, team, about, etc.) — companies often
+  //      have these even when not linked from the home nav. Contact pages
+  //      especially are where individual emails live.
+  const claudeUrls = await identifyTeamPages(websiteUrl, homepageText);
+  const base = new URL(websiteUrl);
+  const commonUrls = COMMON_TEAM_PATHS.map((p) => `${base.origin}${p}`);
+  const seen = new Set<string>([websiteUrl]);
+  const candidateUrls: string[] = [];
+  for (const u of [...claudeUrls, ...commonUrls]) {
+    const norm = u.replace(/\/$/, "");
+    if (seen.has(norm) || seen.has(norm + "/")) continue;
+    seen.add(norm);
+    candidateUrls.push(u);
+    if (candidateUrls.length >= MAX_TEAM_PAGES) break;
+  }
 
-  // Step 4: fetch each team page
+  // Step 4: fetch each candidate page
   const teamPagesContent: Array<{ url: string; text: string }> = [
     { url: websiteUrl, text: homepageText },
   ];
-  for (const url of teamUrls) {
+  for (const url of candidateUrls) {
     try {
       const text = await fetchWithTimeout(url);
       if (text && text.trim().length >= 200) {

@@ -220,6 +220,15 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_gmail_draft_id TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_subject TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_jd_source TEXT;
 
+-- Company enrichment persistence (added 2026-05-26)
+-- website_url + contacts persist on the lead so the roster survives
+-- refreshes, machine changes, etc. Without persistence the operator
+-- has to re-enrich every visit.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS website_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS contacts JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS enrichment_notes TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS first_touch_body TEXT;
+
 -- ============ etsy_connections ============
 CREATE TABLE IF NOT EXISTS etsy_connections (
   id              SERIAL PRIMARY KEY,
