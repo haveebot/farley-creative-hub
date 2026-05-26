@@ -11,6 +11,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { BrandKit } from "@/lib/db/brand-kits";
 import type { DraftKind } from "@/lib/drafts-shared";
 import type { Prospect } from "@/lib/db/prospects";
+import type { VoiceProfile } from "@/lib/voice-profiles-shared";
 import {
   INDUSTRY_LABELS,
   SERVICE_LABELS,
@@ -73,31 +74,55 @@ function kindGuidance(kind: DraftKind): string {
   }
 }
 
-function buildBrandSystemBlock(brand: BrandKit): string {
+function buildBrandSystemBlock(brand: BrandKit, voice?: VoiceProfile | null): string {
+  // When a voice profile is supplied, voice-related fields come from it
+  // and override the brand kit. Brand kit still provides bio, palette,
+  // positioning, brand book notes, links — the "what" while voice is "how".
+  const voiceNotes = voice?.voice_notes || brand.voice_notes;
+  const writingSamples = voice?.writing_samples || brand.writing_samples;
+  const audiencePersona = voice?.audience_persona || brand.audience_persona;
+  const alwaysSay = (voice?.always_say && voice.always_say.length > 0)
+    ? voice.always_say
+    : brand.always_say;
+  const neverSay = (voice?.never_say && voice.never_say.length > 0)
+    ? voice.never_say
+    : brand.never_say;
+
   const lines = [
     `You are a writing assistant for ${brand.name}, a creative studio.`,
     "Everything you draft must sound like the studio — never generic, never corporate.",
     "",
     "STUDIO BIO",
     brand.bio || "(no bio provided yet)",
-    "",
-    "VOICE NOTES — how the studio sounds (described)",
-    brand.voice_notes || "(no voice notes provided yet)",
   ];
 
-  if (brand.writing_samples && brand.writing_samples.trim()) {
+  if (voice) {
     lines.push(
       "",
-      "WRITING SAMPLES — actual examples of the studio's voice. Pattern-match against these. They are the strongest signal of how to sound.",
-      brand.writing_samples,
+      `VOICE PROFILE: ${voice.name}${voice.description ? ` — ${voice.description}` : ""}`,
+      "(Use this voice for this draft; it overrides the brand kit's default voice fields.)",
     );
   }
 
-  if (brand.audience_persona && brand.audience_persona.trim()) {
+  lines.push(
+    "",
+    "VOICE NOTES — how to sound (described)",
+    voiceNotes || "(no voice notes provided yet)",
+  );
+
+  if (writingSamples && writingSamples.trim()) {
     lines.push(
       "",
-      "AUDIENCE — who the studio is writing to. Tune voice, references, and assumed knowledge to this reader.",
-      brand.audience_persona,
+      "WRITING SAMPLES — actual examples of the voice. Pattern-match against these. They are the strongest signal of how to sound.",
+      writingSamples,
+    );
+  }
+
+  if (audiencePersona && audiencePersona.trim()) {
+    lines.push(
+      "",
+      "AUDIENCE — who you're writing to. Tune voice, references, and assumed knowledge to this reader.",
+      audiencePersona,
     );
   }
 
@@ -115,14 +140,14 @@ function buildBrandSystemBlock(brand: BrandKit): string {
     brand.brand_book_notes || "(no brand book notes provided yet)",
   );
 
-  if (brand.always_say && brand.always_say.length > 0) {
+  if (alwaysSay && alwaysSay.length > 0) {
     lines.push("", "ALWAYS-SAY — favored words/phrases. Prefer these when they fit.");
-    brand.always_say.forEach((p) => lines.push(`  • ${p}`));
+    alwaysSay.forEach((p) => lines.push(`  • ${p}`));
   }
 
-  if (brand.never_say && brand.never_say.length > 0) {
+  if (neverSay && neverSay.length > 0) {
     lines.push("", "NEVER-SAY — forbidden words/phrases. Never use these, even close variants.");
-    brand.never_say.forEach((p) => lines.push(`  • ${p}`));
+    neverSay.forEach((p) => lines.push(`  • ${p}`));
   }
 
   lines.push(
@@ -153,6 +178,7 @@ export type DraftRequest = {
   kind: DraftKind;
   prompt: string;
   brand: BrandKit;
+  voice?: VoiceProfile | null;
   prospect?: Prospect | null;
 };
 
@@ -191,7 +217,7 @@ function buildProspectBlock(p: Prospect): string {
 export async function draftWithClaude(req: DraftRequest): Promise<DraftResponse> {
   const client = getClient();
 
-  const brandSystem = buildBrandSystemBlock(req.brand);
+  const brandSystem = buildBrandSystemBlock(req.brand, req.voice);
   const kindSystem = kindGuidance(req.kind);
 
   const systemBlocks: Anthropic.TextBlockParam[] = [

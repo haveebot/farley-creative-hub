@@ -26,6 +26,7 @@ export type DraftCreate = {
   content: string;
   brand_kit_id?: number | null;
   prospect_id?: number | null;
+  voice_profile_id?: number | null;
   model_used?: string | null;
   created_by: string;
 };
@@ -72,8 +73,8 @@ export async function getDraft(id: number): Promise<Draft | null> {
 export async function createDraft(input: DraftCreate): Promise<Draft> {
   const row = await queryOne<Draft>(
     `INSERT INTO drafts
-      (title, kind, prompt, content, brand_kit_id, prospect_id, model_used, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      (title, kind, prompt, content, brand_kit_id, prospect_id, voice_profile_id, model_used, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
       input.title,
@@ -82,6 +83,7 @@ export async function createDraft(input: DraftCreate): Promise<Draft> {
       input.content,
       input.brand_kit_id ?? null,
       input.prospect_id ?? null,
+      input.voice_profile_id ?? null,
       input.model_used ?? null,
       input.created_by,
     ],

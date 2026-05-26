@@ -42,6 +42,7 @@ import {
 import { createGmailDraft } from "@/lib/gmail/send";
 import { getConnectionByPurpose } from "@/lib/db/workspace-connections";
 import { getProspect, listContacts, logActivity } from "@/lib/db/prospects";
+import { getDefaultVoiceProfile } from "@/lib/db/voice-profiles";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -139,6 +140,7 @@ export async function GET(request: Request) {
       const brand =
         (cadence?.brand_kit_id ? await getBrandKit(cadence.brand_kit_id) : null) ??
         (await getStudioKit());
+      const voice = await getDefaultVoiceProfile();
 
       let subject: string;
       let body: string;
@@ -147,6 +149,7 @@ export async function GET(request: Request) {
           kind: "email",
           prompt: step.draft_prompt,
           brand,
+          voice,
           prospect,
         });
         const parsed = parseEmailDraft(drafted.content);

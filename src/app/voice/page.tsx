@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { listVoiceProfiles } from "@/lib/db/voice-profiles";
 import TopNav from "../TopNav";
+import EmptyStateActions from "./EmptyStateActions";
 
 export const dynamic = "force-dynamic";
 
@@ -53,12 +54,7 @@ export default async function VoicePage() {
                 — your studio voice — and Claude will pattern-match against
                 real writing samples instead of guessing.
               </p>
-              <Link
-                href="/voice/new"
-                className="inline-block bg-accent text-white px-4 py-2 rounded text-sm font-medium hover:opacity-90 transition"
-              >
-                Create your first voice profile →
-              </Link>
+              <EmptyStateActions />
             </div>
           ) : (
             <ul className="divide-y divide-border border-y border-border">

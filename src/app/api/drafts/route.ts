@@ -31,6 +31,7 @@ import {
 } from "@/lib/db/drafts";
 import { draftWithClaude } from "@/lib/ai/claude";
 import { getProspect, logActivity } from "@/lib/db/prospects";
+import { getDefaultVoiceProfile, getVoiceProfile } from "@/lib/db/voice-profiles";
 
 export async function GET(request: Request) {
   const auth = await requireAuth();
@@ -84,6 +85,12 @@ export async function POST(request: Request) {
       : typeof body.prospect_id === "string" && body.prospect_id
       ? parseInt(body.prospect_id, 10)
       : null;
+  const voiceProfileIdRaw =
+    typeof body.voice_profile_id === "number"
+      ? body.voice_profile_id
+      : typeof body.voice_profile_id === "string" && body.voice_profile_id
+      ? parseInt(body.voice_profile_id, 10)
+      : null;
 
   if (!title) {
     return NextResponse.json(
@@ -122,6 +129,21 @@ export async function POST(request: Request) {
     }
   }
 
+  // Resolve optional voice profile (overrides brand kit voice fields).
+  // Falls back to default voice profile if one exists and no explicit pick.
+  let voice = null;
+  if (voiceProfileIdRaw && Number.isFinite(voiceProfileIdRaw)) {
+    voice = await getVoiceProfile(voiceProfileIdRaw as number);
+    if (!voice) {
+      return NextResponse.json(
+        { ok: false, error: "voice-profile-not-found" },
+        { status: 400 },
+      );
+    }
+  } else {
+    voice = await getDefaultVoiceProfile();
+  }
+
   // Draft via Claude unless content was pre-supplied.
   let content: string;
   let modelUsed: string | null = null;
@@ -135,7 +157,7 @@ export async function POST(request: Request) {
       );
     }
     try {
-      const result = await draftWithClaude({ kind, prompt, brand, prospect });
+      const result = await draftWithClaude({ kind, prompt, brand, voice, prospect });
       content = result.content;
       modelUsed = result.model;
     } catch (err) {
@@ -155,6 +177,7 @@ export async function POST(request: Request) {
       content,
       brand_kit_id: brand.id,
       prospect_id: prospect?.id ?? null,
+      voice_profile_id: voice?.id ?? null,
       model_used: modelUsed,
       created_by: createdByLabel(auth),
     });
