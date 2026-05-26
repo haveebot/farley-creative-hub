@@ -10,22 +10,30 @@
  */
 
 import { NextResponse } from "next/server";
+import { verifyAgentToken } from "@/lib/db/agent-tokens";
 import { getActiveConnection, upsertConnection } from "@/lib/db/etsy";
 import { fetchAuthenticatedUser, fetchPrimaryShop } from "@/lib/etsy/oauth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json(
-      { ok: false, error: "CRON_SECRET not configured" },
-      { status: 500 },
-    );
-  }
   const header = request.headers.get("authorization") ?? "";
-  if (header !== `Bearer ${cronSecret}`) {
+  const match = header.match(/^Bearer\s+(.+)$/);
+  const token = match?.[1];
+
+  if (!token) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  // Accept either CRON_SECRET or any active agent_token
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && token === cronSecret) {
+    // ok
+  } else {
+    const record = await verifyAgentToken(token);
+    if (!record) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
   }
 
   const conn = await getActiveConnection();
