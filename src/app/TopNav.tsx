@@ -36,6 +36,9 @@ export default async function TopNav() {
           <a href="/pipeline" className="text-muted hover:text-foreground transition">
             Pipeline
           </a>
+          <a href="/clients" className="text-muted hover:text-foreground transition">
+            Clients
+          </a>
           <a href="/settings" className="text-muted hover:text-foreground transition">
             Settings
           </a>
