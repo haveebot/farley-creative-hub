@@ -57,39 +57,50 @@ All tables in `src/lib/db/schema.sql` (idempotent — CREATE TABLE IF NOT EXISTS
 /                       Hub home (greeting, 3 cards, activity feed, recent assets)
 /brand                  Brand kits list (studio + clients)
 /brand/[id]             Per-kit edit + brand book PDF upload/extract
+/voice                  Voice profiles (separate from brand kits since 5-25)
 /assets                 File library
 /drafts                 AI drafting with voice picker
-/pipeline               Active prospects list
+/listings (Etsy)        Etsy listings + push/sync/admin
+/pipeline               Sales pipeline — tab UX: Active / Signed / Passed / Dormant / All
 /pipeline/[id]          Prospect detail (details, contacts, activity, drafts-for, promote)
 /pipeline/new           New prospect
-/pipeline/leads         Lead queue
-/pipeline/leads/[id]    Lead detail (inline-edit, convert button)
+/pipeline/leads         Leads queue — tab UX: Active / Dismissed / Converted / All
+/pipeline/leads/[id]    Lead detail (inline-edit + outreach panel: populate roster → draft first-touch)
 /pipeline/leads/new     New lead (with AI parser panel)
+/cadences               Cadence list + new + detail (multi-step email sequences)
+/clients                Account management — signed clients + brand kit linkage (since 5-26)
 /settings               Hub look & feel (label, theme, accent)
 /settings/agent-access  Bearer token management
-/settings/etsy          Etsy OAuth (scaffold; activates on approval)
+/settings/etsy          Etsy OAuth (connected since 5-25)
+/settings/workspace     Google Workspace OAuth (sending + reading_leads roles)
 /login                  Email + password
 /signup                 First-time signup (gated by SIGNUP_KEY)
 ```
 
 ## MCP server (`/api/mcp`)
 
-JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. Tools exposed (~19 as of 2026-05-24):
+JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. **46 tools as of 2026-05-26:**
 
 **Hub config:** `get_hub_preferences`, `update_hub_preferences`
 **Brand kits:** `get_studio_brand_kit`, `update_studio_brand_kit`, `list_brand_kits`, `get_brand_kit`, `create_client_brand_kit`
 **Assets:** `list_assets`
-**Drafts:** `list_drafts`, `create_draft` (with optional `prospect_id` for outreach context)
-**Pipeline:** `list_prospects`, `get_prospect` (returns prospect + contacts + activity), `create_prospect`, `update_prospect`, `add_prospect_contact`, `log_prospect_activity`
-**Leads:** `list_leads`, `create_lead`, `parse_lead_source` (text or URL → structured fields), `convert_lead_to_prospect`
+**Drafts:** `list_drafts`, `create_draft`
+**Pipeline:** `list_prospects`, `get_prospect`, `create_prospect`, `update_prospect`, `add_prospect_contact`, `log_prospect_activity`
+**Leads:** `list_leads`, `create_lead`, `parse_lead_source`, `convert_lead_to_prospect`
+**First-touch (since 5-26):** `draft_first_touch_for_lead` — drafts custom email + creates Gmail draft (no auto-promote; recipient regex-extract only)
+**Cadences:** `list_cadences`, `create_cadence`, `add_cadence_step`, `enroll_prospect`, `list_enrollments` (etc — full cadence engine since 5-24 PM)
+**Voice profiles:** 7 tools — list/get/get_default/create/update/delete/generate (since 5-25)
+**Etsy (since 5-26):** `get_etsy_shop_info`, `list_etsy_listings`, `update_etsy_listing`, `create_etsy_draft_listing`, `search_etsy_taxonomy`, `list_etsy_shipping_profiles`
 
 ## Cross-feature integrations (the magic)
 
 - **Drafts ↔ Pipeline** — `create_draft({ prospect_id })` makes Claude receive a prospect context block (not cached — per-call) alongside the cached brand block. Auto-logs a `note` activity with `draft_id` linked.
 - **Lead → Prospect** — Convert button (or `convert_lead_to_prospect` MCP) creates a prospect with lead fields pre-filled, status='lead', source attribution preserved in notes, activity logged on the new prospect.
-- **Prospect → Client kit** — Promote button (or future MCP tool) creates a `brand_kits` row with `from_prospect_id` linking back, flips prospect status to 'signed', logs `status_change` activity. Future drafts can use this client's voice.
+- **Prospect → Client kit** — Promote button creates a `brand_kits` row with `from_prospect_id` linking back, flips prospect status to 'signed', logs `status_change` activity. Client kit available in Drafts voice picker for future work.
+- **Pipeline → Clients** — `/clients` surface lists signed prospects + their linked brand kit (LEFT JOIN brand_kits via from_prospect_id). Color-dot from kit accent, kit name pill, "No brand kit" amber warning if unkitted.
 - **AI parser → Lead form** — `/api/leads/parse` accepts text or URL, Claude returns structured ParsedLead, form auto-populates empty fields. Manual edits never overwritten.
 - **Brand kit → CSS variable** — Hub preferences `accent_color` injected as `:root { --accent: ... }` in layout; Tailwind classes (`bg-accent`, etc.) instantly reflect the brand.
+- **First-touch outreach loop (since 5-26)** — Two-step: Populate roster (enrich company → save to lead.contacts JSONB) then Draft first-touch (Claude composes via composition template + brand kit + JD content, creates Gmail draft with selected recipients on TO line). Lead is NOT auto-promoted; operator hits Convert manually after actually sending. Composition template versioned at `composition-templates/job-board-first-touch.md` — 22 principles, loaded from disk at runtime.
 
 ## Operator-side prereqs status
 
@@ -143,4 +154,34 @@ JSON-RPC over HTTP. Bearer auth via the same `agent_tokens` table. Tools exposed
 - **2026-05-24** — Substantive build day. Auth, brand kits, drafts, assets, pipeline (active + leads), Etsy scaffold, MCP server, activity feed, cadence schema stub. ~33 commits total across both sessions.
 - **2026-05-24 (PM)** — Etsy recovery session. Original `farley-creativ-hub` app discovered permanently banned by Etsy (third-party-tool framing, dictated field-by-field with no draft). Two new cross-project memory rules locked: [[feedback_dont_default_to_emailing_collie]], [[feedback_vendor_submission_is_work]], [[feedback_never_suggest_taking_a_break]]. Drafted corrected single-shop / sole-operator submission artifact at `vendor-submissions/etsy-developer-app.md`. Added public `/privacy` page (commit `f656005`) to satisfy potential privacy-URL requirement. Resubmitted as `farley-girls-creative-hub` at 11:09 AM CT — currently Pending Personal Approval, 24-48h documented review window.
 - **2026-05-24 (PM, cont'd)** — Cadence MVP shipped. Discovered the 5-24 handoff was wrong about schema state (cadence + etsy_connections tables claimed-present, actually missing from both schema.sql AND prod Neon). Backfilled (commit `358be41`). Then built end-to-end email cascade MVP: DB modules (commit `37ce6fb`), API routes (commit `9b52e6d`), `/cadences` list + new + detail with inline step editor (commit `5517425`), enrollment surface on prospect detail with pause/resume/cancel (commit `3737890`), `/api/cron/cadence-tick` + `vercel.json` hourly schedule (commit `a3b7bfb`). Pipeline sub-nav now has three tabs: Active prospects · Leads · Cadences. Cron tick: drafts via Claude with brand voice + prospect context, sends via Resend if configured, leaves pending if not (operator can fully exercise UI without Resend live).
+- **2026-05-25 (mega session)** — All-day session: daily DB backups, Etsy fully connected (with x-api-key keystring:shared_secret bug fix), Etsy push/upload/sync built, voice profiles as first-class entity (separate table + AI extraction + 7 MCP tools), farleycreative.com cutover (separate repo), web traffic dashboard. 14 Hub commits + 13 site commits. Cadence-tick switched to draft-only via Gmail (Resend dropped from outbound).
+- **2026-05-26 (mega session — sales pipeline build)** — 18 Hub commits + 1 site commit. Full sales pipeline operationalized:
+  - Site Reveal animation bug fixed (self-healing observer + immediate-in-view check + 2s safety net)
+  - 6 new Etsy MCP tools (total 46)
+  - DKIM 1024-bit + SPF DNS records added at Network Solutions, activated in Workspace
+  - **Sage Em descriptor corrected everywhere** — manufacturer not rep agency (white-label OEM of SignTex)
+  - **First-touch outreach generator** (18-commit saga): composition template (22 principles, versioned .md), company enrichment (URL guess + common-path crawl + Claude contact extraction), Gmail multi-TO support, roster persistence on lead.contacts JSONB, editable email per row (no guessing), 2-step UX (populate → draft) with recipients ALREADY in the first Gmail draft (no back-fill needed). Lead does NOT auto-promote on draft.
+  - **Leads tab UX**: Active default, Dismissed/Converted/All behind tabs, Pass button as primary soft-dismiss action
+  - **Pipeline tab UX**: Active default, Signed/Passed/Dormant/All behind tabs, search bar
+  - **/clients account-management surface**: new top-nav, lists signed prospects + linked brand kits
+  - Brand kit `brand_book_notes` enriched with case study receipts (7,871 chars total) + CrossRef + Sage manufacturer correction
+  - Composition template + farley-creative-site case study both corrected on Sage descriptor
+
+## Sales pipeline state (post-2026-05-26 mega)
+
+End-to-end operational for outbound. Flow:
+1. **Leads** (`/pipeline/leads`) — tab UX, default Active. Pass button for soft-dismiss. Each lead detail has: source posting + company website (auto-discovered + quick-jump pills) + outreach panel.
+2. **Outreach panel** on lead detail:
+   - Step 1: "Populate roster" → enrichment → roster appears below
+   - Step 2: Operator picks recipients + edits emails inline (no guessing — paste from research)
+   - Step 3: "Draft first-touch (N)" → Gmail draft created with recipients ALREADY on TO line
+   - No auto-promote; lead stays a lead until operator hits Convert after actually sending
+3. **Pipeline** (`/pipeline`) — tab UX, default Active. Once converted, prospects sit here through the sales motion.
+4. **Clients** (`/clients`) — signed prospects + their brand kit, ready for ongoing account management.
+
+### What's NOT wired yet (next session)
+- **Convert button doesn't carry lead.contacts → prospect_contacts.** Operator has to re-enrich after promoting.
+- **Send-detection.** Operator manually advances prospect status from 'contacted' (no Gmail watch yet).
+- **Follow-up cadence wiring.** Cadence engine works; "if no reply in 5d, enroll" automation not yet built. Winston explicitly deferred to next session.
+- **`/clients/[id]` dedicated detail.** Uses `/pipeline/[id]` for now.
 - **2026-05-25 (mega session)** — All-day session, ran into 2026-05-26 early AM. 14 Hub commits + 13 commits in NEW repo `farley-creative-site`. Highlights: (1) Daily encrypted DB backups operational (`9bb78c4`). (2) Etsy fully connected — keystring/secret in Vercel, OAuth callback verified, **x-api-key bug** discovered + fixed (Etsy v3 needs `keystring:shared_secret` not just keystring, commit `eb611d6`), shop metadata backfilled via admin endpoint (`782f355`+`06d1d2e`). (3) Etsy push + image upload + sync built (`a190f1a`, 21 files / 1814 LOC). (4) **farleycreative.com cutover** — built site from scratch, integrated Collie's IA notes + About copy + packages + 5 case studies (Port A Local + Sage Em real, 3 PFV translated from current Canva site), real photography via Chrome MCP scrape of 153 images (picked 13), DNS cutover Canva→Vercel mid-session. Site lives at `https://farleycreative.com`. (5) Web traffic dashboard on Hub home (`34e6ddd`). (6) **Voice profiles as first-class entity** — separate `voice_profiles` table, AI extractor from real samples, 7 MCP tools, wired through draftWithClaude + cadence-tick, seed-from-brand-kit one-click migration, VoiceCard on Hub home (`184a0e0`+`97b6fb9`+`63d5be8`). (7) Nav rename: Listings → **Etsy**. (8) **Lead parser bug fix** — parser was never extracting `source_url` for digest items (every cron-captured lead had NULL url), fixed + ran one-shot regex backfill for 33 of 75 existing leads (`20b07f7`+`ecc12b8`). Memory rules locked alongside: nothing fundamentally new — referenced existing cross-project rules.
