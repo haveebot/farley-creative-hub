@@ -457,3 +457,26 @@ BEGIN
       FOREIGN KEY (voice_profile_id) REFERENCES voice_profiles(id) ON DELETE SET NULL;
   END IF;
 END$$;
+
+-- ============ site_pageviews ============
+-- Tenant-owned web analytics. Each pageview is a row.
+-- Privacy-preserving: no PII, no raw IP, no raw UA.
+-- visitor_id is a daily-rotating hash of (IP + UA + salt + date) for
+-- unique-visitor counts that reset each day. No cross-day tracking.
+-- Added 2026-05-26 after Vercel Web Analytics API confirmed not publicly
+-- exposed (the prior fetcher silently returned zeros for 3 days).
+CREATE TABLE IF NOT EXISTS site_pageviews (
+  id          SERIAL PRIMARY KEY,
+  site_id     TEXT NOT NULL,            -- e.g. 'farleycreative.com'
+  path        TEXT NOT NULL,
+  referrer    TEXT,                     -- null = direct or internal nav
+  country     TEXT,                     -- ISO 3166-1 alpha-2 from Vercel geo header
+  visitor_id  TEXT NOT NULL,            -- daily-rotating hash
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS site_pageviews_site_created_idx
+  ON site_pageviews (site_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS site_pageviews_path_idx
+  ON site_pageviews (site_id, path);
+CREATE INDEX IF NOT EXISTS site_pageviews_visitor_idx
+  ON site_pageviews (site_id, visitor_id);
